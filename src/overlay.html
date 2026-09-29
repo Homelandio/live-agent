@@ -19,7 +19,17 @@
   <div id="settingsPanel" class="settings-panel" hidden>
     <label>背景透明度 <output id="backgroundValue">80%</output><input id="backgroundOpacity" type="range" min="35" max="95" value="80"></label>
     <label>文字透明度 <output id="textValue">40%</output><input id="textOpacity" type="range" min="0" max="80" value="40"></label>
-    <label>悬浮窗位置<select id="overlayPosition"><option value="top">屏幕上方</option><option value="right">屏幕右侧</option><option value="bottom">屏幕下方</option><option value="left">屏幕左侧</option></select></label>
+    <label>悬浮窗位置
+      <div class="position-picker">
+        <button id="overlayPositionButton" type="button" aria-haspopup="listbox" aria-expanded="false">屏幕上方</button>
+        <div id="overlayPositionMenu" class="position-menu" role="listbox" hidden>
+          <button class="position-option" type="button" role="option" data-position="top" aria-selected="true">屏幕上方</button>
+          <button class="position-option" type="button" role="option" data-position="right" aria-selected="false">屏幕右侧</button>
+          <button class="position-option" type="button" role="option" data-position="bottom" aria-selected="false">屏幕下方</button>
+          <button class="position-option" type="button" role="option" data-position="left" aria-selected="false">屏幕左侧</button>
+        </div>
+      </div>
+    </label>
   </div>
   <main>
     <div id="status" class="overlay-status">准备就绪</div>

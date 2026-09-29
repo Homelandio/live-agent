@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 let collapsed = false;
 let autoAnswer = true;
+const POSITION_LABELS = { top: '屏幕上方', right: '屏幕右侧', bottom: '屏幕下方', left: '屏幕左侧' };
 
 function applyDisplaySettings() {
   const backgroundTransparency = Number($('backgroundOpacity').value);
@@ -21,8 +22,21 @@ function loadDisplaySettings() {
 
 function loadPositionSetting() {
   const value = ['top', 'right', 'bottom', 'left'].includes(localStorage.overlayPosition) ? localStorage.overlayPosition : 'top';
-  $('overlayPosition').value = value;
-  void window.liveAgent.setOverlayPosition(value);
+  applyPositionSetting(value, false);
+}
+
+function applyPositionSetting(value, moveWindow = true) {
+  const position = POSITION_LABELS[value] ? value : 'top';
+  $('overlayPositionButton').textContent = POSITION_LABELS[position];
+  $('overlayPositionButton').setAttribute('aria-expanded', 'false');
+  $('overlayPositionMenu').hidden = true;
+  document.querySelectorAll('.position-option').forEach(option => {
+    const selected = option.dataset.position === position;
+    option.classList.toggle('is-selected', selected);
+    option.setAttribute('aria-selected', String(selected));
+  });
+  localStorage.overlayPosition = position;
+  if (moveWindow) void window.liveAgent.setOverlayPosition(position);
 }
 
 function timeLabel(value) {
@@ -133,10 +147,24 @@ $('auto').onclick = () => { autoAnswer = !autoAnswer; updateToggle($('auto'), au
 $('displaySettings').onclick = () => { const panel = $('settingsPanel'); panel.hidden = !panel.hidden; updateToggle($('displaySettings'), !panel.hidden, panel.hidden ? '显示' : '隐藏'); };
 $('backgroundOpacity').oninput = applyDisplaySettings;
 $('textOpacity').oninput = applyDisplaySettings;
-$('overlayPosition').onchange = () => {
-  const value = $('overlayPosition').value;
-  localStorage.overlayPosition = value;
-  void window.liveAgent.setOverlayPosition(value);
+$('overlayPositionButton').onclick = () => {
+  const menu = $('overlayPositionMenu');
+  const open = menu.hidden;
+  menu.hidden = !open;
+  $('overlayPositionButton').setAttribute('aria-expanded', String(open));
 };
+document.querySelectorAll('.position-option').forEach(option => option.onclick = () => applyPositionSetting(option.dataset.position));
+document.addEventListener('click', event => {
+  if (!event.target.closest('.position-picker')) {
+    $('overlayPositionMenu').hidden = true;
+    $('overlayPositionButton').setAttribute('aria-expanded', 'false');
+  }
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    $('overlayPositionMenu').hidden = true;
+    $('overlayPositionButton').setAttribute('aria-expanded', 'false');
+  }
+});
 loadDisplaySettings();
 loadPositionSetting();

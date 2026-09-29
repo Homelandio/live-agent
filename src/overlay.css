@@ -84,8 +84,13 @@ footer #microphone, footer #systemAudio { min-width: 88px; }
 .settings-panel label { display: block; margin: 4px 0 8px; color: var(--muted); font-size: 10px; }
 .settings-panel output { float: right; color: var(--muted); }
 .settings-panel input { display: block; width: 100%; height: 16px; margin-top: 5px; accent-color: var(--accent); }
-.settings-panel select { display: block; width: 100%; margin-top: 5px; border: 1px solid var(--line); border-radius: 4px; background: rgba(3, 8, 12, .42); color: var(--muted); padding: 4px 6px; font: inherit; font-size: 10px; outline: none; }
-.settings-panel select:focus { border-color: var(--accent-strong); box-shadow: 0 0 0 2px rgba(226, 178, 99, .2); }
+.position-picker { position: relative; }
+.position-picker > button { display: block; width: 100%; margin: 5px 0 0; text-align: left; }
+.position-menu { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 3px); padding: 4px; border: 1px solid var(--line); border-radius: 5px; background: rgba(19, 27, 33, .96); box-shadow: 0 8px 24px rgba(0, 0, 0, .34); }
+.position-menu[hidden] { display: none; }
+.position-option { display: block; width: 100%; margin: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); text-align: left; }
+.position-option:hover, .position-option.is-selected { background: rgba(159, 113, 45, .48); border-color: rgba(226, 178, 99, .65); color: rgba(255, 247, 226, .94); }
+.position-option:focus-visible { border-color: var(--accent-strong); outline: none; }
 .collapsed main, .collapsed .settings-panel { display: none; }
 .collapsed { height: 45px; min-height: 45px; }
 @media (max-width: 440px) {
