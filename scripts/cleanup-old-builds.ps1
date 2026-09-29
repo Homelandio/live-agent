@@ -9,7 +9,15 @@ $knownOldPaths = @(
     (Join-Path $projectRoot "tmp\ain-runtime-test-20260929"),
     (Join-Path $projectRoot "tmp\ain-runtime-test-20260929-v2"),
     (Join-Path $projectRoot "tmp\release-app-patch-20260929"),
-    (Join-Path $projectRoot "tmp\release-app-patch-20260929-v2")
+    (Join-Path $projectRoot "tmp\release-app-patch-20260929-v2"),
+    (Join-Path $projectRoot "tmp\release-app-patch-20260929-v3"),
+    (Join-Path $projectRoot "tmp\release-app-patch-20260929-v4"),
+    (Join-Path $projectRoot "tmp\release-app-patch-20260929-v5"),
+    (Join-Path $projectRoot "tmp\release-app-patch-20260929-v6"),
+    (Join-Path $projectRoot "tmp\app-mic-v4.asar"),
+    (Join-Path $projectRoot "tmp\app-mic-v5.asar"),
+    (Join-Path $projectRoot "tmp\app-mic-v6.asar"),
+    (Join-Path $projectRoot "tmp\app-before-mic-v4.asar")
 )
 
 foreach ($target in $knownOldPaths) {
