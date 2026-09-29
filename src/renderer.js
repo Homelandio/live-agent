@@ -1026,20 +1026,15 @@ function enterLiveMode() {
   document.body.classList.add('live-focus');
   window.liveAgent.protectWindow(true);
   startSystemAudio().then(async started => {
-    if (!started) {
-      liveSessionStarting = false;
-      document.body.classList.remove('live-focus');
-      setActiveNav('conversationTab');
-      setToggleButton($('liveTab'), false);
-      window.liveAgent.protectWindow(false);
-      return;
-    }
     liveSessionStarting = false;
     liveSessionActive = true;
     setToggleButton($('liveTab'), true);
     await window.liveAgent.setLiveMode(true);
     await window.liveAgent.openOverlay();
-    window.liveAgent.updateOverlay({ ...overlayLivePayload(), status: '直播模式已开启，正在监听系统声音' });
+    window.liveAgent.updateOverlay({
+      ...overlayLivePayload(),
+      status: started ? '直播模式已开启，正在监听系统声音' : '直播模式已开启；系统声音未启动，可使用麦克风或手动提问'
+    });
   });
 }
 
