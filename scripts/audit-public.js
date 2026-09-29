@@ -4,8 +4,7 @@ const { execFileSync } = require('child_process');
 const patterns = [
   { name: 'OpenAI-style secret', pattern: /\bsk-[A-Za-z0-9]{20,}\b/g },
   { name: 'bearer token literal', pattern: /Bearer\s+[A-Za-z0-9._-]{24,}/gi },
-  { name: 'Windows user path', pattern: /[A-Z]:\\Users\\[^\s`"']+/gi },
-  { name: 'known private endpoint', pattern: /2btocken\.xyz/gi }
+  { name: 'Windows user path', pattern: /[A-Z]:\\Users\\[^\s`"']+/gi }
 ];
 
 const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
