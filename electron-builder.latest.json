@@ -1,0 +1,7 @@
+{
+  "appId": "com.liveagent.desktop",
+  "productName": "直播智答",
+  "directories": {"output": "release-v11"},
+  "files": ["src/**/*", "package.json", "README.md", "PRODUCT.md", "DESIGN.md", "AGENT_GUIDE.md", "node_modules/pdf-parse/**/*", "node_modules/mammoth/**/*"],
+  "extraResources": [{"from": "transcriber", "to": "transcriber", "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]}]
+}

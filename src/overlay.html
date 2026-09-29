@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>提词面板</title>
+  <link rel="stylesheet" href="overlay.css">
+</head>
+<body>
+  <header>
+    <strong>直播提词</strong>
+    <div>
+      <button id="displaySettings" title="显示设置" aria-pressed="false">显示</button>
+      <button id="collapse" title="收起" aria-pressed="false">收起</button>
+      <button id="close" title="关闭提词面板">关闭</button>
+      <button id="quit" title="退出软件">退出软件</button>
+    </div>
+  </header>
+  <div id="settingsPanel" class="settings-panel" hidden>
+    <label>背景透明度 <output id="backgroundValue">80%</output><input id="backgroundOpacity" type="range" min="35" max="95" value="80"></label>
+    <label>文字透明度 <output id="textValue">40%</output><input id="textOpacity" type="range" min="0" max="80" value="40"></label>
+  </div>
+  <main>
+    <div id="status" class="overlay-status">准备就绪</div>
+    <div class="overlay-columns">
+      <section class="history-panel">
+        <div class="history-heading"><strong>本次转写</strong><span id="transcriptCount">0 条记录</span></div>
+        <div id="transcriptHistory" class="history-scroll" role="log" aria-live="polite"></div>
+      </section>
+      <section class="history-panel">
+        <div class="history-heading"><strong>回答草稿</strong><span id="answerCount">0 个回答</span></div>
+        <div id="answerHistory" class="history-scroll" role="log"></div>
+      </section>
+    </div>
+    <div class="quick"><input id="overlayInput" placeholder="直接输入问题并发送"><button id="ask">发送</button></div>
+    <footer><button id="screenshot">截图提问</button><button id="microphone" aria-pressed="false">麦克风：关</button><button id="systemAudio" aria-pressed="false">系统声音：关</button><button id="clear">清空</button><button id="auto" aria-pressed="true">自动回答：开</button></footer>
+  </main>
+  <script src="overlay.js"></script>
+</body>
+</html>

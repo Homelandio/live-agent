@@ -1,0 +1,30 @@
+# Dependencies and local build output
+node_modules/
+release/
+release-v11/
+release-skills/
+tmp/
+
+# Local speech runtime and downloaded model assets
+transcriber/runtime/
+transcriber/__pycache__/
+transcriber/models/
+*.onnx
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Electron and packaging caches
+*.log
+builder-debug.yml
+dist/
+out/
+
+# Local credentials and machine-specific settings
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12

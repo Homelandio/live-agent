@@ -1,0 +1,74 @@
+.recent-label{margin-top:18px}
+.conversation-list{display:flex;flex-direction:column;gap:3px;max-height:180px;overflow:auto}
+.conversation-item{display:flex;align-items:center;gap:4px;width:100%;padding:6px 7px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--muted);font:inherit;font-size:11px;text-align:left;cursor:pointer}
+.conversation-item:hover,.conversation-item.active{border-color:var(--line);background:var(--surface);color:var(--ink)}
+.conversation-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.conversation-item button{padding:1px 4px;background:transparent;border:0;color:var(--muted);font-size:13px;line-height:1}
+.conversation-item button:hover{background:transparent;color:var(--attention)}
+.vault-toolbar{display:flex;justify-content:space-between;align-items:center;margin-top:16px;color:var(--ink);font-size:11px}
+.vault-toolbar span{color:var(--muted);font-size:10px}
+.file-list,.memory-list{display:flex;flex-direction:column;gap:4px;margin-top:7px;max-height:112px;overflow:auto}
+.file-item,.memory-item{display:flex;align-items:center;gap:6px;padding:6px 7px;border:1px solid var(--line);border-radius:5px;background:oklch(.145 .01 250);font-size:10px}
+.file-item .meta,.memory-item .meta{min-width:0;flex:1}
+.file-item strong,.memory-item strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:550}
+.file-item small,.memory-item small{display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.file-item button,.memory-item button{flex:0 0 auto;padding:3px 5px;background:transparent;border:0;color:var(--muted);font-size:11px}
+.file-item button:hover,.memory-item button:hover{background:transparent;color:var(--attention)}
+.empty-list{padding:6px 2px;color:var(--muted);font-size:10px}
+button:disabled{opacity:.6;cursor:not-allowed}
+.settings-panel .row{flex-wrap:wrap}
+.settings-panel select{display:block;width:100%;margin-top:6px;border:1px solid var(--line);border-radius:5px;background:oklch(.115 .01 250);color:var(--ink);padding:9px;font:inherit;font-size:12px;outline:none}
+.settings-panel select:focus{border-color:var(--primary);box-shadow:0 0 0 2px oklch(.76 .14 78 / .18)}
+.diagnosis-good{color:var(--primary)}
+.is-pressed,.is-pressed:hover{background:oklch(.32 .055 78);border-color:var(--primary);color:var(--ink);transform:translateY(1px);box-shadow:inset 0 0 0 1px var(--primary)}
+.web-sources{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;max-height:44px;overflow:auto}
+.web-sources:empty{display:none}
+.web-source{display:inline-flex;align-items:center;max-width:100%;padding:3px 6px;border:1px solid var(--line);border-radius:4px;background:var(--surface2);color:var(--muted);font-size:10px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.web-source:hover{color:var(--ink);border-color:var(--primary)}
+
+/* Quiet graphite workspace with a restrained amber action color. */
+:root{
+  --primary:oklch(.76 .14 78);
+  --attention:oklch(.78 .13 52);
+  --line:oklch(.31 .022 250);
+  --muted:oklch(.70 .018 245);
+  --ink:oklch(.95 .012 95);
+  --surface:oklch(.17 .014 250);
+  --surface2:oklch(.22 .018 250);
+}
+button{color:oklch(.18 .018 250)}
+button:hover{background:oklch(.82 .13 78);border-color:oklch(.82 .13 78)}
+button:active{transform:translateY(1px)}
+.secondary:hover,.muted:hover,.quiet:hover{background:oklch(.27 .022 250);border-color:oklch(.40 .028 250);color:var(--ink)}
+.is-active,.is-active:hover{background:oklch(.32 .055 78);border-color:var(--primary);color:oklch(.94 .025 90);box-shadow:inset 0 0 0 1px oklch(.76 .14 78 / .75), inset 0 -2px 0 oklch(.10 .015 250)}
+.nav.is-active{background:oklch(.25 .04 78);border-color:oklch(.52 .09 78);color:var(--ink)}
+button:focus-visible,input:focus,textarea:focus,.settings-panel select:focus{border-color:var(--primary);box-shadow:0 0 0 2px oklch(.76 .14 78 / .18)}
+.message.user{background:oklch(.25 .035 250)}
+.diagnosis-good{color:var(--primary)}
+.local-engine{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border:1px solid oklch(.35 .028 250);border-radius:6px;background:oklch(.14 .014 250)}
+.local-engine strong{display:block;margin-top:3px;color:var(--ink);font-size:12px;font-weight:650}
+.engine-label{display:block;color:var(--muted);font-size:10px}
+.engine-badge{flex:0 0 auto;padding:4px 7px;border:1px solid oklch(.50 .08 78);border-radius:999px;color:oklch(.86 .10 78);font-size:10px}
+.toggle-button{min-width:112px;min-height:34px;white-space:nowrap}
+
+.history-count{margin-top:6px;color:var(--muted);font-size:10px;text-align:right}
+.live-transcript,.answer .scroll{display:flex;flex-direction:column;gap:2px}
+.live-bubble,.answer-bubble{max-width:86%;margin:0 0 9px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;line-height:1.55;font-size:11px;overflow-wrap:anywhere}
+.live-bubble.system{align-self:flex-start;background:oklch(.20 .018 250)}
+.live-bubble.mic{align-self:flex-end;background:oklch(.25 .035 78);border-color:oklch(.42 .07 78)}
+.live-bubble.interim{opacity:.72}
+.live-bubble p,.answer-bubble p{margin:5px 0 0;white-space:pre-wrap}
+.bubble-meta{display:flex;justify-content:space-between;gap:9px;color:var(--muted);font-size:10px}
+.bubble-meta time{font-variant-numeric:tabular-nums}
+.answer-bubble{max-width:100%;background:oklch(.145 .01 250);border-color:oklch(.48 .08 78)}
+.answer-bubble.pending{border-color:oklch(.38 .045 78);color:var(--muted)}
+.answer-bubble.error{border-color:oklch(.50 .09 25)}
+.answer-question{margin-top:6px;color:var(--attention);font-size:10px;white-space:pre-wrap}
+.history-empty{padding:18px 8px;color:var(--muted);font-size:11px;line-height:1.5;text-align:center}
+.scroll{scrollbar-gutter:stable}
+.skill-panel{padding:10px 11px;border:1px solid var(--line);border-radius:6px;background:oklch(.145 .01 250)}
+.skill-panel .hint{margin:0 0 8px}
+.skill-list{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+.skill-chip{display:inline-flex;align-items:center;padding:4px 7px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:10px;background:var(--surface2)}
+.skill-chip.active{border-color:oklch(.60 .09 78);color:var(--ink);background:oklch(.25 .035 78)}
+.skill-panel button{width:100%}

@@ -1,0 +1,53 @@
+{
+  "name": "live-agent",
+  "version": "0.1.0",
+  "description": "Local-first live streaming assistant with protected prompt window",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^32.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.liveagent.desktop",
+    "productName": "直播智答",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "README.md",
+      "PRODUCT.md",
+      "DESIGN.md",
+      "AGENT_GUIDE.md",
+      "SKILLS.md"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "LiveAgent-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "直播智答"
+    }
+  },
+  "dependencies": {
+    "mammoth": "^1.13.0",
+    "pdf-parse": "^2.4.5"
+  }
+}
