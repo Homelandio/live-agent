@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "dist": "electron-builder --win nsis"
+    "dist": "electron-builder --win nsis",
+    "test:audio": "node scripts/test-audio-segmentation.js"
   },
   "devDependencies": {
     "electron": "^32.2.0",

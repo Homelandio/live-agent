@@ -8,8 +8,15 @@ const stored = name => {
 const store = (name, value) => localStorage.setItem(name, String(value));
 const forget = name => localStorage.removeItem(name);
 
-let recognition;
-let recognitionWanted = false;
+let micStream;
+let micRecorder;
+let micAudioContext;
+let micAnalyser;
+let micAudioData;
+let micMeterTimer;
+let micSegmentParts = [];
+let micSegmenter;
+let micWanted = false;
 let knowledge = '';
 let files = [];
 let memories = [];
@@ -21,6 +28,8 @@ let segmentTimer;
 const liveAnswerTimers = new Set();
 let liveAnswerQueue = Promise.resolve();
 const SYSTEM_AUDIO_SEGMENT_MS = 5000;
+const MIC_END_SILENCE_MS = 1200;
+const MIC_MAX_SEGMENT_MS = 15000;
 let liveSessionActive = false;
 let liveSessionStarting = false;
 let liveSession;
@@ -148,7 +157,7 @@ function overlayLivePayload() {
     liveEntries: liveSession?.entries.slice(-120) || [],
     liveAnswers: liveSession?.answers.slice(-60) || [],
     autoAnswer: $('autoAnswer')?.checked,
-    micActive: recognitionWanted,
+    micActive: Boolean(micStream?.active),
     micPending,
     systemAudioActive: Boolean(audioStream?.active),
     systemAudioPending
@@ -260,7 +269,15 @@ function reportInputStatus(text, active = false, pending = false) {
   window.liveAgent.updateOverlay({ ...overlayLivePayload(), status: text, systemAudioActive: active, systemAudioPending: pending });
 }
 
-async function waitForLocalTranscriber(timeout = 90000) {
+function reportMicrophoneStatus(text, active = false, pending = false) {
+  micPending = Boolean(pending);
+  setState(text, active);
+  if ($('audioStatus')) $('audioStatus').textContent = text;
+  window.liveAgent.updateOverlay({ ...overlayLivePayload(), status: text, micActive: active, micPending: pending });
+}
+
+async function waitForLocalTranscriber(timeout = 90000, input = 'system') {
+  const report = input === 'mic' ? reportMicrophoneStatus : reportInputStatus;
   const started = Date.now();
   while (Date.now() - started < timeout) {
     const status = await window.liveAgent.localTranscriberStatus();
@@ -269,7 +286,7 @@ async function waitForLocalTranscriber(timeout = 90000) {
       return status;
     }
     if (status.error && /ERROR|未安装|进程已退出|ENOENT|spawn|无法|failed|exception/i.test(status.error)) throw new Error(status.error);
-    reportInputStatus('正在加载本地中文转录模型，请稍候...', false, true);
+    report('正在加载本地中文转录模型，请稍候...', false, true);
     await new Promise(resolve => setTimeout(resolve, 700));
   }
   throw new Error('本地转录模型加载超时，请重启软件后重试');
@@ -537,54 +554,129 @@ async function answer(question, { remember = true, image = selectedImage, liveAn
   }
 }
 
-function startRecognition() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) { setState('浏览器不支持语音识别'); setToggleButton($('start'), false, '麦克风：关'); return; }
-  if (recognitionWanted) return;
+function microphoneMimeType() {
+  if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
+  if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
+  if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) return 'audio/ogg;codecs=opus';
+  return '';
+}
+
+function microphoneRms() {
+  if (!micAnalyser || !micAudioData) return 0;
+  micAnalyser.getFloatTimeDomainData(micAudioData);
+  let energy = 0;
+  for (const sample of micAudioData) energy += sample * sample;
+  return Math.sqrt(energy / Math.max(1, micAudioData.length));
+}
+
+function requestMicSegmentFlush() {
+  if (micRecorder?.state === 'recording') micRecorder.stop();
+}
+
+function monitorMicrophone() {
+  if (!micWanted || !micSegmenter || !micRecorder) return;
+  const result = micSegmenter.observe(microphoneRms(), performance.now());
+  if (result.action === 'voice-start') {
+    liveInterimMic = '正在听取这一段...';
+    syncLiveSessionViews();
+  }
+  if (result.action === 'flush') requestMicSegmentFlush();
+}
+
+function startMicRecorder() {
+  if (!micWanted || !micStream?.active || micRecorder) return;
+  const mimeType = microphoneMimeType();
+  if (!mimeType) throw new Error('当前系统不支持可解码的麦克风录音格式');
+  micSegmenter.reset(performance.now());
+  micSegmentParts = [];
+  const recorder = new MediaRecorder(micStream, { mimeType });
+  micRecorder = recorder;
+  recorder.ondataavailable = event => { if (event.data.size) micSegmentParts.push(event.data); };
+  recorder.onerror = event => reportMicrophoneStatus('麦克风录音失败：' + (event.error?.message || 'MediaRecorder 错误'), false);
+  recorder.onstop = () => {
+    const parts = micSegmentParts;
+    const hadVoice = micSegmenter.hasVoice;
+    micSegmentParts = [];
+    micRecorder = null;
+    const blob = parts.length ? new Blob(parts, { type: mimeType }) : null;
+    micSegmenter.reset(performance.now());
+    if (micWanted && micStream?.active) {
+      try { startMicRecorder(); } catch (error) { reportMicrophoneStatus('麦克风录音无法继续：' + error.message, false); }
+    }
+    if (hadVoice && blob) void transcribeBlob(blob, 'mic');
+  };
+  recorder.start();
+}
+
+async function startRecognition() {
+  if (micWanted || micStream?.active) return;
   ensureLiveSession();
-  recognitionWanted = true;
+  micWanted = true;
   micPending = true;
   setToggleButton($('start'), true, '麦克风：准备中');
   syncLiveSessionViews();
-  const instance = new SpeechRecognition();
-  recognition = instance;
-  instance.lang = 'zh-CN';
-  instance.continuous = true;
-  instance.interimResults = true;
-  instance.onstart = () => { micPending = false; setToggleButton($('start'), true, '麦克风：开'); syncLiveSessionViews(); setState('麦克风转写中', true); };
-  instance.onerror = event => {
-    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') recognitionWanted = false;
-    micPending = recognitionWanted;
-    setToggleButton($('start'), recognitionWanted, recognitionWanted ? '麦克风：重连中' : '麦克风：关');
+  try {
+    await waitForLocalTranscriber(90000, 'mic');
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('当前运行环境不支持麦克风采集');
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    });
+    micStream.getAudioTracks().forEach(track => {
+      track.onended = () => { if (micWanted) stopRecognition('麦克风设备已断开'); };
+    });
+    micAudioContext = new AudioContext();
+    await micAudioContext.resume();
+    const source = micAudioContext.createMediaStreamSource(micStream);
+    micAnalyser = micAudioContext.createAnalyser();
+    micAnalyser.fftSize = 2048;
+    micAnalyser.smoothingTimeConstant = 0.72;
+    micAudioData = new Float32Array(micAnalyser.fftSize);
+    source.connect(micAnalyser);
+    micSegmenter = LiveAudioSegmentation.createVoiceSegmenter({ endSilenceMs: MIC_END_SILENCE_MS, maxSpeechMs: MIC_MAX_SEGMENT_MS });
+    startMicRecorder();
+    clearInterval(micMeterTimer);
+    micMeterTimer = setInterval(monitorMicrophone, 50);
+    micPending = false;
+    setToggleButton($('start'), true, '麦克风：开');
     syncLiveSessionViews();
-    setState('转写错误：' + event.error);
-  };
-  instance.onend = () => {
-    if (recognitionWanted) { micPending = true; setToggleButton($('start'), true, '麦克风：重连中'); syncLiveSessionViews(); setTimeout(() => { try { instance.start(); } catch {} }, 300); }
-    else { micPending = false; liveInterimMic = ''; syncLiveSessionViews(); setToggleButton($('start'), false, '麦克风：关'); setState('麦克风转写已停止'); }
-  };
-  instance.onresult = event => {
-    let interim = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const text = event.results[i][0].transcript.trim();
-      if (event.results[i].isFinal) {
-        if (text) recordLiveInput('mic', text);
-      } else interim += text;
-    }
-    liveInterimMic = interim;
+    reportMicrophoneStatus(`麦克风转写中，短停顿 ${MIC_END_SILENCE_MS / 1000} 秒后提交`, true);
+  } catch (error) {
+    micWanted = false;
+    stopRecognition();
+    setToggleButton($('start'), false, '麦克风：关');
     syncLiveSessionViews();
-  };
-  try { instance.start(); } catch (error) { recognitionWanted = false; micPending = false; setToggleButton($('start'), false, '麦克风：关'); syncLiveSessionViews(); setState('无法启动转写：' + error.message); }
+    reportMicrophoneStatus('麦克风未启动：' + microphoneCaptureError(error), false);
+  }
 }
 
-function stopRecognition() {
-  recognitionWanted = false;
+function microphoneCaptureError(error) {
+  const name = String(error?.name || '');
+  const message = String(error?.message || error || '未知错误');
+  if (name === 'NotAllowedError' || /denied|permission/i.test(message)) return '未获得麦克风权限，请在系统和软件权限中允许麦克风访问';
+  if (name === 'NotFoundError' || /Requested device not found/i.test(message)) return '没有检测到可用麦克风设备';
+  return message;
+}
+
+function stopRecognition(reason = '麦克风转写已停止') {
+  micWanted = false;
   micPending = false;
-  recognition?.stop();
-  recognition = null;
+  clearInterval(micMeterTimer);
+  micMeterTimer = null;
+  const recorder = micRecorder;
+  if (recorder?.state === 'recording') recorder.stop();
+  micStream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
+  micStream = null;
+  micAnalyser = null;
+  micAudioData = null;
+  const context = micAudioContext;
+  micAudioContext = null;
+  if (context && context.state !== 'closed') void context.close();
   liveInterimMic = '';
   syncLiveSessionViews();
   setToggleButton($('start'), false, '麦克风：关');
+  if (reason) setState(reason);
+  window.liveAgent.updateOverlay({ ...overlayLivePayload(), status: reason, micActive: false, micPending: false });
 }
 
 function stopAllInput() {
@@ -952,7 +1044,7 @@ function enterLiveMode() {
 }
 
 $('start').onclick = () => {
-  if (recognitionWanted) stopRecognition();
+  if (micWanted) stopRecognition();
   else startRecognition();
 };
 $('stop').onclick = stopAllInput;
@@ -1052,7 +1144,7 @@ window.liveAgent.onOverlayCommand(async command => {
     else await startSystemAudio();
   }
   if (command.type === 'toggle-microphone') {
-    if (recognitionWanted) stopRecognition();
+    if (micWanted) stopRecognition();
     else startRecognition();
   }
   if (command.type === 'new-chat') startNewChat();
@@ -1184,11 +1276,14 @@ async function localWavBase64(blob) {
   } finally { await context.close(); }
 }
 
-async function transcribeBlob(blob) {
+async function transcribeBlob(blob, source = 'system') {
   try {
     const audioBase64 = await localWavBase64(blob);
     if (!audioBase64) return;
     const data = await window.liveAgent.localTranscribe({ audioBase64, mimeType: 'audio/wav' });
-    if (data.text) recordLiveInput('system', data.text);
-  } catch (error) { reportInputStatus('本地转写失败，将继续监听：' + error.message, Boolean(audioStream?.active)); }
+    if (data.text) recordLiveInput(source, data.text);
+  } catch (error) {
+    if (source === 'mic') reportMicrophoneStatus('本地麦克风转写失败，将继续监听：' + error.message, Boolean(micStream?.active));
+    else reportInputStatus('本地转写失败，将继续监听：' + error.message, Boolean(audioStream?.active));
+  }
 }
