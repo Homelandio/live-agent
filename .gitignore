@@ -25,6 +25,9 @@ out/
 .env
 .env.*
 !.env.example
+transcriber-provider.json
+*.tmp
+*.bak
 *.key
 *.pem
 *.p12

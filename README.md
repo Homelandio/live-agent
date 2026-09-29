@@ -29,12 +29,12 @@ npm start
 - 支持主动选择截图，并向兼容视觉模型发送图片内容。
 - Chat Completions 支持 SSE 流式回答，非流式响应也能回退处理。
 - 独立提词窗口支持收起、滚动、退出和 Electron 内容保护。
-- 知识库和长期记忆持久化到 Electron `userData/vault.json`，重启应用后仍可使用。
+- 知识库和长期记忆持久化到稳定的 Electron `userData/vault.json`，应用更新不会覆盖；每次写入前额外保留 `vault.json.bak`，主文件损坏时自动恢复上一份有效数据。
 - 每轮用户消息会尝试提取用户明确陈述的稳定事实或偏好，写入长期记忆；只保存用户消息，不从助手回答反推。
 - `setContentProtection(true)` 启用 Electron/Windows 内容保护，尽量排除 OBS 显示器或窗口采集；它不是绝对 DRM，必须实际测试采集方式。
 - 系统回环音频采集需要在 Windows 共享选择器中选择带声音的窗口或显示器，仍需结合具体音频设备和 OBS 场景验证。
-- DeepSeek API 只负责文字问答，语音识别固定使用软件目录内的 `FunASR Paraformer 中文流式（本地）`。
-- FunASR 的运行时、模型和服务脚本位于 `resources/transcriber`，不依赖系统 Python，不需要语音 API Key；首次启动会拉起本机回环服务，模型加载完成后即可转写。
+- DeepSeek 等兼容接口只负责文字问答；语音通过可替换的转录提供者协议接入，默认实现是 `FunASR Paraformer 中文流式（本地）`。
+- FunASR 的服务脚本和提供者清单位于 `resources/transcriber`；源码仓库不提交 Python 运行时和模型权重，发布构建会打包构建机已有的资源，用户也可以按上游许可下载替代模型，或使用外接 HTTP 提供者，不需要修改渲染层。
 - FunASR 进程只在软件运行期间存在；正常退出会清理整个转录进程树。模型文件保留在磁盘，不会在退出后继续占用内存；强制终止或断电等异常场景可能需要人工检查残留进程。
 - Agent 工作流支持本地 `SKILL.md`：内置事实约束、知识库检索、直播问答和工作区安全四类技能，并按当前任务自动选择；主界面“打开用户技能目录”可打开应用数据目录下的 `skills/` 文件夹。
 
@@ -43,7 +43,7 @@ npm start
 1. 在实际 Windows 音频设备和 OBS 场景中继续验证共享音频选择行为。
 2. 将关键词检索升级为 embedding 向量检索和持久化索引。
 3. 增加 OBS 显示器采集、窗口采集的实际测试页面。
-4. 配置网络可用时生成 NSIS 安装包；构建后的 `release-v11/win-unpacked/直播智答.exe` 是可直接运行版本。
+4. 准备好 `transcriber/runtime` 和 `transcriber/models` 后运行 `npm run dist` 生成 NSIS 安装包；没有这些可选资源时仍可使用外接转录提供者。
 
 ## 连接说明
 
@@ -59,6 +59,16 @@ npm start
 - 本地模型随软件目录分发，首次启动需要等待模型加载；服务只监听 `127.0.0.1`，不会对局域网开放。
 - 系统声音采集仍需在 Windows 共享选择器中选择窗口/屏幕并勾选共享音频；当前按约 5 秒一段处理，属于准实时转写。
 
+## 转录提供者替换
+
+默认协议见 `transcriber/README.md` 和 `transcriber/provider.json`。本地或外接实现只需提供 `GET /health` 和 `POST /transcribe`：后者接收 16 kHz PCM WAV 并返回 `{"text":"..."}`。用户可在应用 `userData/transcriber-provider.json` 放置覆盖配置；外接接口的密钥只通过该配置声明的环境变量注入，不要把密钥写入 JSON、源码或 Git。
+
+## 公开发布与隐私
+
+- API Key、知识库、长期记忆、聊天记录和用户技能都位于应用数据目录，不进入仓库或安装包源码。
+- 发布前应运行语法检查、功能测试和凭据扫描；不要提交 `node_modules`、构建目录、模型权重、Python 运行时、`.env` 或本地提供者配置。
+- 本项目代码许可证见 `LICENSE`；FunASR 与 Paraformer 模型属于第三方组件，署名和许可证见 `THIRD_PARTY_NOTICES.md`，本项目只提供适配和调用代码。
+
 ## 记忆与检索设计
 
 当前实现参考 Mem0 的事实记忆思想、Letta 的持久化工作记忆思想，以及 LlamaIndex/LangChain 的文档分块与检索流程，但保持本地 Electron 依赖轻量：
@@ -70,11 +80,7 @@ npm start
 - 每次提问按关键词对片段排序，取前 8 个片段和最近 20 条记忆。
 - 文件和记忆支持单项删除；知识库保存原文和分块，当前使用本地词法检索，后续可替换为 embedding 向量索引而不改变持久化入口。
 
-## 技能审计与许可证
-
-曾对本机 `%USERPROFILE%\AppData\Local\Programs\@aetherdesktop\resources\app.asar` 做只读审计。Aether 没有独立的应用级 `skills/` 文件夹，技能以打包内嵌的 `SKILL.md` 和 `createSkill` 注册；其 Agent 还包含结构化事件流、工具审批、工作区隔离、持久会话和记忆分层设计。
-
-本项目只借鉴上述工作流思想，没有复制 Aether 应用自身的打包代码。Aether 依赖中的 `@mastra/core`、`@mastra/memory` 和 `@mastra/libsql` 包含 Apache License 2.0 声明；本项目没有引入这些大型依赖，当前实现为独立的项目本地代码。Aether 应用自有代码在安装包中未发现可确认的开源许可证，因此不直接移植其实现。`dotenv` 附带技能分别标注 BSD-2-Clause / BSD-3-Clause，但与本项目 Agent 工作流无直接必要，也未复制。
+## 用户技能
 
 用户技能示例：
 

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "funasr-paraformer-zh-streaming",
+  "name": "FunASR Paraformer 中文流式",
+  "type": "local-sidecar",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/alibaba-damo-academy/FunASR",
+  "healthPath": "/health",
+  "transcribePath": "/transcribe",
+  "command": "runtime/python.exe",
+  "args": ["server.py", "--model-dir", "models/paraformer-zh-streaming", "--port", "0"]
+}

@@ -7,7 +7,10 @@
     "start": "electron .",
     "dev": "electron .",
     "dist": "electron-builder --win nsis",
-    "test:audio": "node scripts/test-audio-segmentation.js"
+    "test:audio": "node scripts/test-audio-segmentation.js",
+    "test:vault": "node scripts/test-vault-persistence.js",
+    "test:transcriber": "node scripts/test-transcriber-provider.js",
+    "audit:public": "node scripts/audit-public.js"
   },
   "devDependencies": {
     "electron": "^32.2.0",
@@ -27,6 +30,13 @@
       "DESIGN.md",
       "AGENT_GUIDE.md",
       "SKILLS.md"
+    ],
+    "extraResources": [
+      {
+        "from": "transcriber",
+        "to": "transcriber",
+        "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
+      }
     ],
     "win": {
       "target": [

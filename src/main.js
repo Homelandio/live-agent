@@ -5,6 +5,8 @@ const http = require('http');
 const https = require('https');
 const { spawn, spawnSync } = require('child_process');
 const { buildSkillContext, ensureUserSkillsRoot, listSkillMetadata } = require('./agent-skills');
+const { loadVaultFile, saveVaultFile } = require('./vault-store');
+const { loadTranscriberProvider, resolveProviderCommand } = require('./transcriber-config');
 
 let win;
 let overlay;
@@ -15,6 +17,7 @@ let transcriberProcess;
 let transcriberPort = 0;
 let transcriberReady = false;
 let transcriberError = '';
+let transcriberProvider;
 let pendingDisplaySourceId = '';
 let overlayPosition = 'top';
 const OVERLAY_POSITION_MARGIN = 18;
@@ -148,14 +151,20 @@ function transcriberRoot() {
 
 function startLocalTranscriber() {
   const root = transcriberRoot();
-  const script = path.join(root, 'server.py');
-  const bundledPython = path.join(root, 'runtime', 'python.exe');
-  if (!fs.existsSync(script) || !fs.existsSync(bundledPython)) {
-    transcriberError = '本地转录组件尚未安装到软件目录';
-    return false;
-  }
   try {
-    transcriberProcess = spawn(bundledPython, [script, '--model-dir', path.join(root, 'models', 'paraformer-zh-streaming'), '--port', '0'], {
+    transcriberProvider = loadTranscriberProvider(root, path.join(app.getPath('userData'), 'transcriber-provider.json'));
+    if (transcriberProvider.type === 'http') {
+      transcriberPort = 0;
+      transcriberReady = false;
+      void probeExternalTranscriber(transcriberProvider);
+      return true;
+    }
+    const command = resolveProviderCommand(root, transcriberProvider.command);
+    if (!fs.existsSync(command)) {
+      transcriberError = '本地转录组件尚未安装到软件目录';
+      return false;
+    }
+    transcriberProcess = spawn(command, transcriberProvider.args, {
       cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
     });
     transcriberProcess.stdout.setEncoding('utf8');
@@ -173,6 +182,27 @@ function startLocalTranscriber() {
   } catch (error) { transcriberError = error.message; return false; }
 }
 
+async function probeExternalTranscriber(provider) {
+  try {
+    const result = await transcriberRequest(provider, provider.healthPath, { timeout: 12000 });
+    if (result.status < 200 || result.status >= 300) throw new Error(`外接转录服务 HTTP ${result.status}`);
+    transcriberReady = true;
+    transcriberError = '';
+  } catch (error) {
+    transcriberReady = false;
+    transcriberError = error.message;
+  }
+}
+
+function transcriberRequest(provider, requestPath, options = {}) {
+  const relativePath = String(requestPath || '').replace(/^\/+/, '');
+  const base = String(provider.endpoint || '').endsWith('/') ? provider.endpoint : `${provider.endpoint}/`;
+  const target = new URL(relativePath, base);
+  const headers = { ...(options.headers || {}) };
+  if (provider.apiKeyEnv && process.env[provider.apiKeyEnv]) headers.Authorization = `Bearer ${process.env[provider.apiKeyEnv]}`;
+  return requestRaw(target.toString(), { ...options, headers });
+}
+
 function stopLocalTranscriber() {
   const child = transcriberProcess;
   if (child && child.pid) {
@@ -186,15 +216,13 @@ function stopLocalTranscriber() {
 
 function loadVault() {
   vaultPath = path.join(app.getPath('userData'), 'vault.json');
-  try { vault = JSON.parse(fs.readFileSync(vaultPath, 'utf8')); } catch { vault = { version: 1, files: [], memories: [], conversations: [] }; }
-  vault.version ||= 1;
-  vault.files ||= []; vault.memories ||= []; vault.conversations ||= [];
+  const result = loadVaultFile(vaultPath);
+  vault = result.vault;
+  if (result.recovered) console.warn('知识库主文件损坏，已从 vault.json.bak 恢复');
+  if (result.errors.length) console.warn('知识库加载警告：', result.errors.join('; '));
 }
 function saveVault() {
-  fs.mkdirSync(path.dirname(vaultPath), { recursive: true });
-  const tempPath = `${vaultPath}.tmp`;
-  fs.writeFileSync(tempPath, JSON.stringify(vault, null, 2), 'utf8');
-  try { fs.renameSync(tempPath, vaultPath); } catch { fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2), 'utf8'); try { fs.unlinkSync(tempPath); } catch {} }
+  vault = saveVaultFile(vaultPath, vault);
 }
 function splitText(text, size = 1400, overlap = 160) {
   const chunks = []; for (let i = 0; i < text.length; i += Math.max(1, size - overlap)) chunks.push(text.slice(i, i + size)); return chunks;
@@ -264,16 +292,27 @@ ipcMain.handle('protect-window', (_event, enabled) => {
 ipcMain.handle('quit-app', () => { app.quit(); return true; });
 ipcMain.handle('set-live-mode', (_event, enabled) => setLiveMode(enabled));
 ipcMain.handle('env-openai-available', () => Boolean(process.env.OPENAI_API_KEY));
-ipcMain.handle('local-transcriber-status', () => ({ available: transcriberReady, port: transcriberPort, error: transcriberError, model: 'FunASR Paraformer 中文流式' }));
+ipcMain.handle('local-transcriber-status', () => ({
+  available: transcriberReady,
+  port: transcriberPort,
+  error: transcriberError,
+  provider: transcriberProvider?.id || 'unknown',
+  model: transcriberProvider?.name || '未配置转录提供者',
+  license: transcriberProvider?.license || '',
+  repository: transcriberProvider?.repository || ''
+}));
 ipcMain.handle('display-sources', async () => (await displaySources()).map(source => ({ id: source.id, name: source.name })));
 ipcMain.handle('set-display-source', (_event, sourceId) => { pendingDisplaySourceId = String(sourceId || ''); return true; });
 ipcMain.handle('local-transcribe', async (_event, payload = {}) => {
-  if (!transcriberReady || !transcriberPort) throw new Error(transcriberError || '本地转录服务尚未就绪');
   const body = Buffer.from(String(payload.audioBase64 || ''), 'base64');
   if (!body.length) throw new Error('音频数据为空');
-  const result = await requestRaw(`http://127.0.0.1:${transcriberPort}/transcribe`, {
-    method: 'POST', headers: { 'Content-Type': payload.mimeType || 'audio/webm', 'Content-Length': body.length }, body, timeout: 60000
-  });
+  if (!transcriberReady) throw new Error(transcriberError || '本地转录服务尚未就绪');
+  const provider = transcriberProvider;
+  if (!provider) throw new Error('转录提供者尚未配置');
+  const headers = { 'Content-Type': payload.mimeType || 'audio/webm', 'Content-Length': body.length };
+  const result = provider.type === 'http'
+    ? await transcriberRequest(provider, provider.transcribePath, { method: 'POST', headers, body, timeout: 60000 })
+    : await requestRaw(`http://127.0.0.1:${transcriberPort}${provider.transcribePath}`, { method: 'POST', headers, body, timeout: 60000 });
   if (result.status < 200 || result.status >= 300) throw new Error(result.body || `本地转录 HTTP ${result.status}`);
   try { return JSON.parse(result.body); } catch { throw new Error('本地转录服务返回了无法解析的内容'); }
 });
