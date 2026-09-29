@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
-const { spawn } = require('child_process');
+const { spawn, spawnSync, execFileSync } = require('child_process');
 const { buildSkillContext, ensureUserSkillsRoot, listSkillMetadata } = require('./agent-skills');
 
 let win;
@@ -155,6 +155,7 @@ function startLocalTranscriber() {
     return false;
   }
   try {
+    cleanupOrphanedTranscribers(root);
     transcriberProcess = spawn(bundledPython, [script, '--model-dir', path.join(root, 'models', 'paraformer-zh-streaming'), '--port', '0'], {
       cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -173,8 +174,32 @@ function startLocalTranscriber() {
   } catch (error) { transcriberError = error.message; return false; }
 }
 
+function cleanupOrphanedTranscribers(root) {
+  if (process.platform !== 'win32') return;
+  const command = [
+    '$target = [IO.Path]::GetFullPath((Join-Path $env:LIVE_AGENT_TRANSCRIBER_ROOT "server.py"))',
+    '$matches = Get-CimInstance Win32_Process | Where-Object { $_.Name -in @("python.exe", "pythonw.exe") -and $_.CommandLine -like "*$target*" }',
+    '$matches | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }'
+  ].join('; ');
+  try {
+    execFileSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', command], {
+      windowsHide: true,
+      stdio: 'ignore',
+      env: { ...process.env, LIVE_AGENT_TRANSCRIBER_ROOT: root }
+    });
+  } catch {
+    // An orphan is best-effort cleanup; startup can still report a normal spawn error.
+  }
+}
+
 function stopLocalTranscriber() {
-  if (transcriberProcess && !transcriberProcess.killed) transcriberProcess.kill();
+  const child = transcriberProcess;
+  if (child && child.pid) {
+    if (process.platform === 'win32') {
+      try { spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); }
+      catch { try { child.kill(); } catch {} }
+    } else if (!child.killed) child.kill();
+  }
   transcriberProcess = null; transcriberPort = 0; transcriberReady = false;
 }
 
