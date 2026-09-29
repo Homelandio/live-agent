@@ -27,7 +27,7 @@ header {
   align-items: center;
   justify-content: space-between;
   background: rgba(25, 33, 39, var(--overlay-bg-alpha));
-  -webkit-app-region: drag;
+  user-select: none;
 }
 header div, button, input { -webkit-app-region: no-drag; }
 header strong { font-size: 13px; }
@@ -84,6 +84,8 @@ footer #microphone, footer #systemAudio { min-width: 88px; }
 .settings-panel label { display: block; margin: 4px 0 8px; color: var(--muted); font-size: 10px; }
 .settings-panel output { float: right; color: var(--muted); }
 .settings-panel input { display: block; width: 100%; height: 16px; margin-top: 5px; accent-color: var(--accent); }
+.settings-panel select { display: block; width: 100%; margin-top: 5px; border: 1px solid var(--line); border-radius: 4px; background: rgba(3, 8, 12, .42); color: var(--muted); padding: 4px 6px; font: inherit; font-size: 10px; outline: none; }
+.settings-panel select:focus { border-color: var(--accent-strong); box-shadow: 0 0 0 2px rgba(226, 178, 99, .2); }
 .collapsed main, .collapsed .settings-panel { display: none; }
 .collapsed { height: 45px; min-height: 45px; }
 @media (max-width: 440px) {

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, safeStorage, session, dialog, shell, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage, session, dialog, shell, desktopCapturer, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -16,6 +16,8 @@ let transcriberPort = 0;
 let transcriberReady = false;
 let transcriberError = '';
 let pendingDisplaySourceId = '';
+let overlayPosition = 'top';
+const OVERLAY_POSITION_MARGIN = 18;
 
 function builtinSkillsRoot() {
   return path.join(__dirname, 'skills');
@@ -91,6 +93,34 @@ function setLiveMode(enabled) {
     if (liveMode) { overlay.show(); overlay.focus(); }
   }
   return liveMode;
+}
+
+function overlayDisplay() {
+  if (!overlay || overlay.isDestroyed()) return screen.getPrimaryDisplay();
+  try { return screen.getDisplayMatching(overlay.getBounds()); } catch { return screen.getPrimaryDisplay(); }
+}
+
+function setOverlayPosition(position = 'top') {
+  const allowed = new Set(['top', 'right', 'bottom', 'left']);
+  overlayPosition = allowed.has(String(position)) ? String(position) : 'top';
+  if (!overlay || overlay.isDestroyed()) return overlayPosition;
+  const display = overlayDisplay();
+  const work = display.workArea;
+  const bounds = overlay.getBounds();
+  const margin = OVERLAY_POSITION_MARGIN;
+  let x = work.x + Math.round((work.width - bounds.width) / 2);
+  let y = work.y + margin;
+  if (overlayPosition === 'right') {
+    x = work.x + work.width - bounds.width - margin;
+    y = work.y + Math.round((work.height - bounds.height) / 2);
+  } else if (overlayPosition === 'bottom') {
+    y = work.y + work.height - bounds.height - margin;
+  } else if (overlayPosition === 'left') {
+    x = work.x + margin;
+    y = work.y + Math.round((work.height - bounds.height) / 2);
+  }
+  overlay.setPosition(Math.round(x), Math.round(y), false);
+  return overlayPosition;
 }
 function notifyLiveEnded() { if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) win.webContents.send('overlay-command', { type: 'live-ended' }); }
 function focusWindow(target) {
@@ -193,7 +223,10 @@ function createOverlay() {
     backgroundColor: '#00000000', hasShadow: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
+  setOverlayPosition(overlayPosition);
   overlay.loadFile(path.join(__dirname, 'overlay.html'));
+  overlay.on('ready-to-show', () => setOverlayPosition(overlayPosition));
+  overlay.on('resize', () => setOverlayPosition(overlayPosition));
   overlay.setContentProtection(true);
   overlay.on('closed', () => { overlay = null; if (liveMode) { setLiveMode(false); notifyLiveEnded(); } });
   return overlay;
@@ -260,6 +293,7 @@ ipcMain.handle('read-image-data', async (_event, filePath) => {
   return `data:${mime};base64,${fs.readFileSync(filePath).toString('base64')}`;
 });
 ipcMain.handle('open-overlay', () => { createOverlay(); focusWindow(overlay); return true; });
+ipcMain.handle('set-overlay-position', (_event, position) => setOverlayPosition(position));
 ipcMain.handle('close-overlay', () => { if (liveMode) { setLiveMode(false); notifyLiveEnded(); } if (overlay && !overlay.isDestroyed()) overlay.hide(); return true; });
 ipcMain.handle('update-overlay', (_event, payload) => { if (overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay-data', payload); return true; });
 ipcMain.handle('overlay-command', (_event, command) => { if (win && !win.isDestroyed()) win.webContents.send('overlay-command', command); return true; });

@@ -19,6 +19,12 @@ function loadDisplaySettings() {
   applyDisplaySettings();
 }
 
+function loadPositionSetting() {
+  const value = ['top', 'right', 'bottom', 'left'].includes(localStorage.overlayPosition) ? localStorage.overlayPosition : 'top';
+  $('overlayPosition').value = value;
+  void window.liveAgent.setOverlayPosition(value);
+}
+
 function timeLabel(value) {
   try { return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
   catch { return ''; }
@@ -127,4 +133,10 @@ $('auto').onclick = () => { autoAnswer = !autoAnswer; updateToggle($('auto'), au
 $('displaySettings').onclick = () => { const panel = $('settingsPanel'); panel.hidden = !panel.hidden; updateToggle($('displaySettings'), !panel.hidden, panel.hidden ? '显示' : '隐藏'); };
 $('backgroundOpacity').oninput = applyDisplaySettings;
 $('textOpacity').oninput = applyDisplaySettings;
+$('overlayPosition').onchange = () => {
+  const value = $('overlayPosition').value;
+  localStorage.overlayPosition = value;
+  void window.liveAgent.setOverlayPosition(value);
+};
 loadDisplaySettings();
+loadPositionSetting();
