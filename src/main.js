@@ -84,15 +84,28 @@ function collectRelatedTopics(items, output) {
 
 function setLiveMode(enabled) {
   liveMode = Boolean(enabled);
+  enforceContentProtection(overlay, true);
+  if (liveMode) enforceContentProtection(win, true);
   if (win && !win.isDestroyed()) {
     win.setSkipTaskbar(liveMode);
     if (liveMode) win.hide(); else { win.show(); win.focus(); }
   }
   if (overlay && !overlay.isDestroyed()) {
     overlay.setSkipTaskbar(true);
+    enforceContentProtection(overlay, true);
     if (liveMode) { overlay.show(); overlay.focus(); }
   }
   return liveMode;
+}
+
+function enforceContentProtection(target, enabled = true) {
+  if (!target || target.isDestroyed()) return false;
+  try {
+    target.setContentProtection(Boolean(enabled));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function overlayDisplay() {
@@ -104,6 +117,7 @@ function setOverlayPosition(position = 'top') {
   const allowed = new Set(['top', 'right', 'bottom', 'left']);
   overlayPosition = allowed.has(String(position)) ? String(position) : 'top';
   if (!overlay || overlay.isDestroyed()) return overlayPosition;
+  enforceContentProtection(overlay, true);
   const display = overlayDisplay();
   const work = display.workArea;
   const bounds = overlay.getBounds();
@@ -206,6 +220,7 @@ function createWindow() {
     backgroundColor: '#10151c',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
+  enforceContentProtection(win, true);
   win.loadFile(path.join(__dirname, 'index.html'));
   win.webContents.session.setPermissionRequestHandler((wc, permission, callback) => {
     callback(['media', 'microphone'].includes(permission));
@@ -223,20 +238,21 @@ function createOverlay() {
     backgroundColor: '#00000000', hasShadow: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
+  enforceContentProtection(overlay, true);
   setOverlayPosition(overlayPosition);
   overlay.loadFile(path.join(__dirname, 'overlay.html'));
-  overlay.on('ready-to-show', () => setOverlayPosition(overlayPosition));
-  overlay.on('resize', () => setOverlayPosition(overlayPosition));
-  overlay.setContentProtection(true);
+  overlay.on('ready-to-show', () => { enforceContentProtection(overlay, true); setOverlayPosition(overlayPosition); });
+  overlay.webContents.on('did-finish-load', () => enforceContentProtection(overlay, true));
+  overlay.on('show', () => enforceContentProtection(overlay, true));
+  overlay.on('resize', () => { enforceContentProtection(overlay, true); setOverlayPosition(overlayPosition); });
   overlay.on('closed', () => { overlay = null; if (liveMode) { setLiveMode(false); notifyLiveEnded(); } });
   return overlay;
 }
 
 ipcMain.handle('protect-window', (_event, enabled) => {
-  if (process.platform === 'win32' && win) {
-    // Electron maps this to the Windows display-affinity content-protection API.
-    win.setContentProtection(Boolean(enabled));
-  }
+  enforceContentProtection(win, enabled);
+  // The floating prompt is always protected; the main-window checkbox must not disable it.
+  enforceContentProtection(overlay, true);
   return Boolean(enabled);
 });
 ipcMain.handle('quit-app', () => { app.quit(); return true; });
@@ -292,8 +308,8 @@ ipcMain.handle('read-image-data', async (_event, filePath) => {
   const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
   return `data:${mime};base64,${fs.readFileSync(filePath).toString('base64')}`;
 });
-ipcMain.handle('open-overlay', () => { createOverlay(); focusWindow(overlay); return true; });
-ipcMain.handle('set-overlay-position', (_event, position) => setOverlayPosition(position));
+ipcMain.handle('open-overlay', () => { createOverlay(); enforceContentProtection(overlay, true); focusWindow(overlay); return true; });
+ipcMain.handle('set-overlay-position', (_event, position) => { enforceContentProtection(overlay, true); return setOverlayPosition(position); });
 ipcMain.handle('close-overlay', () => { if (liveMode) { setLiveMode(false); notifyLiveEnded(); } if (overlay && !overlay.isDestroyed()) overlay.hide(); return true; });
 ipcMain.handle('update-overlay', (_event, payload) => { if (overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay-data', payload); return true; });
 ipcMain.handle('overlay-command', (_event, command) => { if (win && !win.isDestroyed()) win.webContents.send('overlay-command', command); return true; });
