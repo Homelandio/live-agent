@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('liveAgent', {
   setDisplaySource: sourceId => ipcRenderer.invoke('set-display-source', sourceId),
   apiRequest: request => ipcRenderer.invoke('api-request', request),
   quitApp: () => ipcRenderer.invoke('quit-app'),
+  getLiveShortcuts: () => ipcRenderer.invoke('live-shortcuts-get'),
+  saveLiveShortcuts: values => ipcRenderer.invoke('live-shortcuts-save', values),
+  resetLiveShortcuts: () => ipcRenderer.invoke('live-shortcuts-reset'),
   chooseImage: () => ipcRenderer.invoke('choose-image'),
   readImageData: filePath => ipcRenderer.invoke('read-image-data', filePath),
   captureScreenImage: () => ipcRenderer.invoke('capture-screen-image'),
@@ -44,6 +47,7 @@ contextBridge.exposeInMainWorld('liveAgent', {
   vaultDeleteConversation: id => ipcRenderer.invoke('vault-delete-conversation', id),
   onOverlayData: callback => ipcRenderer.on('overlay-data', (_event, payload) => callback(payload)),
   onOverlayCommand: callback => ipcRenderer.on('overlay-command', (_event, payload) => callback(payload)),
+  onLiveShortcutsStatus: callback => ipcRenderer.on('live-shortcuts-status', (_event, payload) => callback(payload)),
   secureStore: value => ipcRenderer.invoke('secure-store', value),
   secureUnstore: value => ipcRenderer.invoke('secure-unstore', value)
 });

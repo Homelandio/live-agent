@@ -38,15 +38,94 @@ const workspaceCache = new Map();
 const OVERLAY_POSITION_MARGIN = 18;
 const OVERLAY_EXPANDED_SIZE = { width: 520, height: 470 };
 const OVERLAY_COLLAPSED_SIZE = { width: 260, height: 45 };
-const LIVE_SHORTCUTS = [
-  { accelerator: 'Control+Alt+Shift+R', command: { type: 'toggle-system-audio' } },
-  { accelerator: 'Control+Alt+Shift+H', command: { type: 'toggle-overlay-collapse' } },
-  { accelerator: 'Control+Alt+Shift+P', command: { type: 'cycle-overlay-position' } },
-  { accelerator: 'Control+Alt+Shift+S', command: { type: 'capture-screenshot' } },
-  { accelerator: 'Control+Alt+Shift+Enter', command: { type: 'send-screenshot' } },
-  { accelerator: 'Control+Alt+Shift+Backspace', command: { type: 'delete-screenshot' } }
+const DEFAULT_LIVE_SHORTCUTS = [
+  { id: 'system-audio', label: '系统声音开始 / 截断', accelerator: 'Control+Alt+Shift+R', command: { type: 'toggle-system-audio' } },
+  { id: 'overlay-collapse', label: '悬浮窗收起 / 展开', accelerator: 'Control+Alt+Shift+H', command: { type: 'toggle-overlay-collapse' } },
+  { id: 'overlay-position', label: '循环切换悬浮窗位置', accelerator: 'Control+Alt+Shift+P', command: { type: 'cycle-overlay-position' } },
+  { id: 'capture-screenshot', label: '截图', accelerator: 'Control+Alt+Shift+S', command: { type: 'capture-screenshot' } },
+  { id: 'send-screenshot', label: '发送截图', accelerator: 'Control+Alt+Shift+Enter', command: { type: 'send-screenshot' } },
+  { id: 'delete-screenshot', label: '删除截图', accelerator: 'Control+Alt+Shift+Backspace', command: { type: 'delete-screenshot' } }
 ];
+const SHORTCUT_MODIFIERS = new Set(['Control', 'Alt', 'Shift', 'Super', 'Command', 'CommandOrControl', 'AltGr']);
+const HIGH_RISK_SHORTCUTS = new Set([
+  'Alt+Tab', 'Alt+F4', 'Control+Alt+Delete', 'Control+Shift+Escape', 'Control+L', 'Control+T',
+  'Control+W', 'Control+R', 'Control+N', 'Control+Tab', 'Control+Shift+T', 'Alt+Left', 'Alt+Right'
+]);
+let liveShortcutConfig = {};
+let shortcutConfigPath;
+let failedLiveShortcuts = [];
 let registeredLiveShortcuts = [];
+
+function shortcutDefinitions() {
+  return DEFAULT_LIVE_SHORTCUTS.map(item => ({ ...item, accelerator: liveShortcutConfig[item.id] || item.accelerator }));
+}
+
+function shortcutConfigSnapshot() {
+  const definitions = shortcutDefinitions();
+  return {
+    shortcuts: definitions.map(({ id, label, accelerator }) => ({ id, label, accelerator })),
+    live: liveMode,
+    registered: [...registeredLiveShortcuts],
+    failed: [...failedLiveShortcuts]
+  };
+}
+
+function normalizeShortcutAccelerator(value) {
+  return String(value || '').trim().split('+').map(token => token.trim()).filter(Boolean).join('+');
+}
+
+function validateShortcutAccelerator(value) {
+  const accelerator = normalizeShortcutAccelerator(value);
+  const tokens = accelerator.split('+').filter(Boolean);
+  const modifiers = tokens.filter(token => SHORTCUT_MODIFIERS.has(token));
+  const keyTokens = tokens.filter(token => !SHORTCUT_MODIFIERS.has(token));
+  if (!accelerator || !tokens.length || keyTokens.length !== 1) return '必须包含一个功能键或字母键。';
+  if (modifiers.length < 2) return '至少需要两个修饰键，避免误触发电脑或浏览器快捷键。';
+  if (new Set(tokens).size !== tokens.length) return '快捷键中不能重复同一个按键。';
+  if (HIGH_RISK_SHORTCUTS.has(tokens.join('+'))) return '该组合属于系统或浏览器高风险快捷键，请换一个组合。';
+  return '';
+}
+
+function readLiveShortcutConfig() {
+  shortcutConfigPath = path.join(app.getPath('userData'), 'live-shortcuts.json');
+  liveShortcutConfig = {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(shortcutConfigPath, 'utf8'));
+    const values = parsed && typeof parsed === 'object' && parsed.shortcuts && typeof parsed.shortcuts === 'object' ? parsed.shortcuts : {};
+    for (const item of DEFAULT_LIVE_SHORTCUTS) {
+      const accelerator = normalizeShortcutAccelerator(values[item.id]);
+      if (!validateShortcutAccelerator(accelerator)) liveShortcutConfig[item.id] = accelerator;
+    }
+  } catch { /* Missing or invalid settings use the built-in low-conflict defaults. */ }
+}
+
+function writeLiveShortcutConfig(values) {
+  const next = {};
+  const errors = [];
+  const seen = new Map();
+  for (const item of DEFAULT_LIVE_SHORTCUTS) {
+    const accelerator = normalizeShortcutAccelerator(values?.[item.id] || item.accelerator);
+    const validationError = validateShortcutAccelerator(accelerator);
+    if (validationError) errors.push(`${item.label}：${validationError}`);
+    if (seen.has(accelerator)) errors.push(`${item.label} 与“${seen.get(accelerator)}”重复。`);
+    else seen.set(accelerator, item.label);
+    next[item.id] = accelerator;
+  }
+  if (errors.length) return { ok: false, errors, snapshot: shortcutConfigSnapshot() };
+  const previous = { ...liveShortcutConfig };
+  if (liveMode) unregisterLiveShortcuts();
+  liveShortcutConfig = next;
+  try {
+    fs.mkdirSync(path.dirname(shortcutConfigPath), { recursive: true });
+    fs.writeFileSync(shortcutConfigPath, JSON.stringify({ version: 1, shortcuts: liveShortcutConfig }, null, 2), 'utf8');
+  } catch (error) {
+    liveShortcutConfig = previous;
+    if (liveMode) registerLiveShortcuts();
+    return { ok: false, errors: [`快捷键配置写入失败：${error.message}`], snapshot: shortcutConfigSnapshot() };
+  }
+  if (liveMode) registerLiveShortcuts();
+  return { ok: true, errors: [], snapshot: shortcutConfigSnapshot() };
+}
 
 function builtinSkillsRoot() {
   return path.join(__dirname, 'skills');
@@ -265,20 +344,29 @@ function handleLiveShortcut(command) {
 
 function registerLiveShortcuts() {
   if (registeredLiveShortcuts.length) return;
-  for (const item of LIVE_SHORTCUTS) {
+  failedLiveShortcuts = [];
+  const definitions = shortcutDefinitions();
+  for (const item of definitions) {
     try {
       if (globalShortcut.register(item.accelerator, () => handleLiveShortcut(item.command))) registeredLiveShortcuts.push(item.accelerator);
     } catch { /* A user or driver may already own one accelerator; the others remain available. */ }
   }
-  const failed = LIVE_SHORTCUTS.filter(item => !registeredLiveShortcuts.includes(item.accelerator)).map(item => item.accelerator);
+  failedLiveShortcuts = definitions.filter(item => !registeredLiveShortcuts.includes(item.accelerator)).map(item => item.id);
+  const failed = definitions.filter(item => failedLiveShortcuts.includes(item.id)).map(item => item.accelerator);
   if (failed.length && overlay && !overlay.isDestroyed() && !overlay.webContents.isDestroyed()) {
     overlay.webContents.send('overlay-data', { status: `有 ${failed.length} 个快捷键被其他程序占用，请查看设置中的快捷键列表` });
   }
+  notifyLiveShortcutStatus();
 }
 
 function unregisterLiveShortcuts() {
   for (const accelerator of registeredLiveShortcuts) globalShortcut.unregister(accelerator);
   registeredLiveShortcuts = [];
+  notifyLiveShortcutStatus();
+}
+
+function notifyLiveShortcutStatus() {
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('live-shortcuts-status', shortcutConfigSnapshot());
 }
 
 function transcriberRoot() {
@@ -481,6 +569,16 @@ function requestQuit() {
 }
 ipcMain.handle('quit-app', () => requestQuit());
 ipcMain.handle('set-live-mode', (_event, enabled) => setLiveMode(enabled));
+ipcMain.handle('live-shortcuts-get', () => shortcutConfigSnapshot());
+ipcMain.handle('live-shortcuts-save', (_event, values = {}) => {
+  if (!shortcutConfigPath) readLiveShortcutConfig();
+  return writeLiveShortcutConfig(values);
+});
+ipcMain.handle('live-shortcuts-reset', () => {
+  if (!shortcutConfigPath) readLiveShortcutConfig();
+  const values = Object.fromEntries(DEFAULT_LIVE_SHORTCUTS.map(item => [item.id, item.accelerator]));
+  return writeLiveShortcutConfig(values);
+});
 ipcMain.handle('env-openai-available', () => Boolean(process.env.OPENAI_API_KEY));
 ipcMain.handle('local-transcriber-status', () => ({
   available: transcriberReady,
@@ -733,7 +831,7 @@ else {
     if (liveMode && focusWindow(overlay)) return;
     if (!focusWindow(win)) { createWindow(); showMainWindow(); }
   });
-  app.whenReady().then(() => { configureDisplayCapture(); loadVault(); loadWorkspace(); userSkillsRoot(); createTray(); createWindow(); createOverlay(); startLocalTranscriber(); });
+  app.whenReady().then(() => { readLiveShortcutConfig(); configureDisplayCapture(); loadVault(); loadWorkspace(); userSkillsRoot(); createTray(); createWindow(); createOverlay(); startLocalTranscriber(); });
   app.on('before-quit', () => { isQuitting = true; unregisterLiveShortcuts(); stopLocalTranscriber(); if (tray && !tray.isDestroyed()) { tray.destroy(); tray = null; } });
   app.on('window-all-closed', () => { /* Windows stays in the tray until the user chooses the explicit exit action. */ });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

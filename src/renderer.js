@@ -59,6 +59,9 @@ let systemAudioPending = false;
 let loadedSkills = [];
 let activeSkillSlugs = [];
 let systemAudioMode = stored('systemAudioMode') === 'stream' ? 'stream' : 'manual';
+let liveShortcutState = { shortcuts: [], live: false, registered: [], failed: [] };
+let liveShortcutDraft = null;
+let recordingShortcutId = '';
 
 function normalizeSystemAudioMode(value) {
   return value === 'stream' ? 'stream' : 'manual';
@@ -134,6 +137,133 @@ function setToggleButton(button, active, activeLabel) {
   button.setAttribute('aria-pressed', String(Boolean(active)));
   if (active && activeLabel) button.textContent = activeLabel;
   if (!active && button.dataset.idleLabel) button.textContent = button.dataset.idleLabel;
+}
+
+function shortcutDisplay(accelerator) {
+  const labels = { Control: 'Ctrl', CommandOrControl: 'Ctrl/Cmd', Command: 'Cmd', Super: 'Win', AltGr: 'AltGr', Escape: 'Esc', Backspace: 'Backspace', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right' };
+  return String(accelerator || '').split('+').map(token => labels[token] || token).join('+');
+}
+
+function shortcutKeyToken(event) {
+  const key = String(event.key || '');
+  if (/^[a-z]$/i.test(key)) return key.toUpperCase();
+  if (/^\d$/.test(key) || /^F(?:[1-9]|1[0-2])$/.test(key)) return key;
+  const names = {
+    Enter: 'Enter', Backspace: 'Backspace', Delete: 'Delete', Insert: 'Insert', Tab: 'Tab', Escape: 'Escape', Spacebar: 'Space', ' ': 'Space',
+    ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown'
+  };
+  return names[key] || '';
+}
+
+function recordedShortcut(event) {
+  const key = shortcutKeyToken(event);
+  if (!key) return { error: '请再按一个字母、数字、功能键或方向键完成组合。' };
+  const modifiers = [];
+  if (event.ctrlKey) modifiers.push('Control');
+  if (event.altKey) modifiers.push('Alt');
+  if (event.shiftKey) modifiers.push('Shift');
+  if (event.metaKey) modifiers.push('Super');
+  if (modifiers.length < 2) return { error: '至少需要两个修饰键，例如 Ctrl+Alt+S。' };
+  return { accelerator: [...modifiers, key].join('+') };
+}
+
+function shortcutValues() {
+  const values = {};
+  for (const item of liveShortcutState.shortcuts || []) values[item.id] = liveShortcutDraft?.[item.id] || item.accelerator;
+  return values;
+}
+
+function setLiveShortcutState(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.shortcuts)) return;
+  liveShortcutState = snapshot;
+  if (!liveShortcutDraft) liveShortcutDraft = Object.fromEntries(snapshot.shortcuts.map(item => [item.id, item.accelerator]));
+  renderShortcutSettings();
+}
+
+function renderShortcutSettings() {
+  const list = $('shortcutList');
+  if (!list) return;
+  list.replaceChildren();
+  const values = shortcutValues();
+  for (const item of liveShortcutState.shortcuts || []) {
+    const row = document.createElement('div'); row.className = 'shortcut-row';
+    const text = document.createElement('div'); text.className = 'shortcut-row-label'; text.textContent = item.label;
+    const state = document.createElement('span'); state.className = 'shortcut-row-state';
+    const changed = values[item.id] !== item.accelerator;
+    const failed = !changed && (liveShortcutState.failed || []).includes(item.id);
+    const registered = !changed && (liveShortcutState.registered || []).includes(item.accelerator);
+    state.textContent = changed ? '有未保存修改' : failed ? '直播时未注册：可能被其他程序占用' : registered ? '直播中已注册' : '直播时启用';
+    text.append(state);
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'secondary shortcut-capture'; button.dataset.id = item.id;
+    if (failed) button.classList.add('failed');
+    if (recordingShortcutId === item.id) { button.classList.add('recording'); button.textContent = '请按下组合键…'; }
+    else button.textContent = shortcutDisplay(values[item.id]);
+    button.title = '点击后按下新的快捷键组合';
+    button.onclick = () => {
+      recordingShortcutId = recordingShortcutId === item.id ? '' : item.id;
+      $('shortcutStatus').textContent = recordingShortcutId ? `正在录制“${item.label}”，按下组合键后会自动填入。按 Esc 取消。` : '快捷键录制已取消。';
+      renderShortcutSettings();
+    };
+    row.append(text, button); list.append(row);
+  }
+  const status = $('shortcutStatus');
+  if (status && !recordingShortcutId) {
+    if (liveShortcutDraft && liveShortcutState.shortcuts.some(item => liveShortcutDraft[item.id] !== item.accelerator)) status.textContent = '快捷键已修改但尚未保存。';
+    else if (liveShortcutState.live && liveShortcutState.failed?.length) status.textContent = `直播中有 ${liveShortcutState.failed.length} 个快捷键未注册，请更换组合后保存。`;
+    else status.textContent = liveShortcutState.live ? '直播中：快捷键已注册。' : '快捷键配置已加载，直播模式开启时生效。';
+  }
+}
+
+document.addEventListener('keydown', event => {
+  if (!recordingShortcutId) return;
+  event.preventDefault(); event.stopPropagation();
+  if (event.key === 'Escape' && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+    recordingShortcutId = '';
+    if ($('shortcutStatus')) $('shortcutStatus').textContent = '快捷键录制已取消。';
+    renderShortcutSettings();
+    return;
+  }
+  const result = recordedShortcut(event);
+  if (result.error) {
+    if ($('shortcutStatus')) $('shortcutStatus').textContent = result.error;
+    return;
+  }
+  liveShortcutDraft = liveShortcutDraft || Object.fromEntries((liveShortcutState.shortcuts || []).map(item => [item.id, item.accelerator]));
+  liveShortcutDraft[recordingShortcutId] = result.accelerator;
+  recordingShortcutId = '';
+  if ($('shortcutStatus')) $('shortcutStatus').textContent = `已设置为 ${shortcutDisplay(result.accelerator)}，点击“保存快捷键”后生效。`;
+  renderShortcutSettings();
+});
+
+async function loadLiveShortcutSettings() {
+  try { setLiveShortcutState(await window.liveAgent.getLiveShortcuts()); }
+  catch (error) { if ($('shortcutStatus')) $('shortcutStatus').textContent = '快捷键配置读取失败：' + error.message; }
+}
+
+async function saveLiveShortcutSettings() {
+  recordingShortcutId = '';
+  try {
+    const result = await window.liveAgent.saveLiveShortcuts(shortcutValues());
+    if (!result.ok) {
+      if ($('shortcutStatus')) $('shortcutStatus').textContent = result.errors.join(' ');
+      return;
+    }
+    liveShortcutDraft = null;
+    setLiveShortcutState(result.snapshot);
+    setState(result.snapshot.failed?.length ? '快捷键已保存，但有组合未注册' : '快捷键已保存');
+  } catch (error) { if ($('shortcutStatus')) $('shortcutStatus').textContent = '快捷键保存失败：' + error.message; }
+}
+
+async function resetLiveShortcutSettings() {
+  recordingShortcutId = '';
+  try {
+    const result = await window.liveAgent.resetLiveShortcuts();
+    if (!result.ok) { if ($('shortcutStatus')) $('shortcutStatus').textContent = result.errors.join(' '); return; }
+    liveShortcutDraft = null;
+    setLiveShortcutState(result.snapshot);
+    setState('已恢复默认快捷键');
+  } catch (error) { if ($('shortcutStatus')) $('shortcutStatus').textContent = '恢复默认快捷键失败：' + error.message; }
 }
 
 function timeLabel(value) {
@@ -1267,6 +1397,8 @@ $('systemAudioMode').onchange = event => {
   const mode = normalizeSystemAudioMode(event.target.value);
   if (setSystemAudioMode(mode)) setState(`已切换为${systemAudioModeLabel(mode)}`);
 };
+$('saveShortcuts').onclick = saveLiveShortcutSettings;
+$('resetShortcuts').onclick = resetLiveShortcutSettings;
 $('provider').onchange = event => applyProvider(event.target.value);
 $('protect').onchange = event => window.liveAgent.protectWindow(event.target.checked);
 $('knowledge').oninput = event => knowledge = event.target.value;
@@ -1308,6 +1440,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (savedModel && [...$('model').options].some(option => option.value === savedModel)) $('model').value = savedModel;
   $('webSearchEnabled').checked = stored('webSearchEnabled') !== '0';
   $('taskMode').value = stored('taskMode') || 'chat';
+  await loadLiveShortcutSettings();
   setSystemAudioMode(systemAudioMode, { persist: false, notify: false });
   loadDisplaySources();
   if (stored('key')) try { $('key').value = await window.liveAgent.secureUnstore(stored('key')); } catch {}
@@ -1318,6 +1451,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   const mode = taskMode();
   await loadAgentSkillContext('', mode === 'interview' || mode === 'debrief' ? 'interview' : mode);
   window.liveAgent.protectWindow(true);
+});
+
+window.liveAgent.onLiveShortcutsStatus(snapshot => {
+  if (!liveShortcutDraft) setLiveShortcutState(snapshot);
+  else {
+    liveShortcutState = snapshot;
+    renderShortcutSettings();
+  }
 });
 
 window.liveAgent.onOverlayCommand(async command => {
