@@ -447,8 +447,8 @@ ipcMain.handle('local-transcribe', async (_event, payload = {}) => {
   if (!provider) throw new Error('转录提供者尚未配置');
   const headers = { 'Content-Type': payload.mimeType || 'audio/webm', 'Content-Length': body.length };
   const result = provider.type === 'http'
-    ? await transcriberRequest(provider, provider.transcribePath, { method: 'POST', headers, body, timeout: 60000 })
-    : await requestRaw(`http://127.0.0.1:${transcriberPort}${provider.transcribePath}`, { method: 'POST', headers, body, timeout: 60000 });
+    ? await transcriberRequest(provider, provider.transcribePath, { method: 'POST', headers, body, timeout: 180000 })
+    : await requestRaw(`http://127.0.0.1:${transcriberPort}${provider.transcribePath}`, { method: 'POST', headers, body, timeout: 180000 });
   if (result.status < 200 || result.status >= 300) throw new Error(result.body || `本地转录 HTTP ${result.status}`);
   try { return JSON.parse(result.body); } catch { throw new Error('本地转录服务返回了无法解析的内容'); }
 });

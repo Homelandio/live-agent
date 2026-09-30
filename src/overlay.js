@@ -166,7 +166,7 @@ function submitOverlayQuestion() {
 }
 
 $('collapse').onclick = () => { collapsed = !collapsed; document.body.classList.toggle('collapsed', collapsed); updateToggle($('collapse'), collapsed, collapsed ? '展开' : '收起'); };
-$('close').onclick = () => window.liveAgent.closeOverlay();
+$('close').onclick = () => { clearScreenshotDraft(); return window.liveAgent.closeOverlay(); };
 $('quit').onclick = () => window.liveAgent.quitApp();
 $('ask').onclick = submitOverlayQuestion;
 $('overlayInput').addEventListener('keydown', event => { if (event.key === 'Enter') $('ask').click(); });
@@ -187,7 +187,7 @@ $('deleteScreenshot').onclick = () => clearScreenshotDraft();
 $('sendScreenshot').onclick = submitOverlayQuestion;
 $('systemAudio').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-system-audio' });
 $('microphone').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-microphone' });
-$('clear').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'clear' });
+$('clear').onclick = () => { clearScreenshotDraft(); window.liveAgent.sendOverlayCommand({ type: 'clear' }); };
 $('auto').onclick = () => { autoAnswer = !autoAnswer; updateToggle($('auto'), autoAnswer, `自动回答：${autoAnswer ? '开' : '关'}`); window.liveAgent.sendOverlayCommand({ type: 'toggle-auto', value: autoAnswer }); };
 $('displaySettings').onclick = () => { const panel = $('settingsPanel'); panel.hidden = !panel.hidden; updateToggle($('displaySettings'), !panel.hidden, panel.hidden ? '显示' : '隐藏'); };
 $('backgroundOpacity').oninput = applyDisplaySettings;
