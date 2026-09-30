@@ -3,16 +3,16 @@
 The desktop app talks to a transcription provider through a small local HTTP contract:
 
 - `GET /health` returns JSON and a successful 2xx status.
-- `POST /transcribe` receives a `16 kHz`, mono or multi-channel, `16-bit PCM WAV` body and returns JSON such as `{"text":"..."}`.
+- `POST /transcribe` receives a `16 kHz`, mono or multi-channel, `16-bit PCM WAV` body and returns JSON such as `{"text":"..."}`. The bundled adapter also returns `rawText`, `punctuatedText`, and `punctuationApplied`; consumers must treat `rawText` as the recognition record and use punctuation only for display.
 - The provider must bind only to loopback when it is a local sidecar.
 
-`provider.json` describes the bundled provider. It can be replaced by a compatible local model without changing the renderer. A user-only override may be placed at the application data path as `transcriber-provider.json`; it is intentionally outside the Git repository and may use an external `http` provider. External credentials must be supplied through the configured environment variable (`apiKeyEnv`), never committed to the manifest.
+`provider.json` describes the bundled provider. Optional `--punc-model` and `--hotword-file` arguments are ignored safely when their assets are absent, so the base ASR can start without downloading extra weights. It can be replaced by a compatible local model without changing the renderer. A user-only override may be placed at the application data path as `transcriber-provider.json`; it is intentionally outside the Git repository and may use an external `http` provider. External credentials must be supplied through the configured environment variable (`apiKeyEnv`), never committed to the manifest.
 
 The default implementation uses FunASR Paraformer. FunASR and the Paraformer model are third-party components; see `THIRD_PARTY_NOTICES.md` and the upstream license. This repository contains the adapter and launch contract, not the downloaded runtime or model weights. A future provider can be an external ASR API or another local model as long as it implements the same contract.
 
 ## Accuracy roadmap
 
-The current bundled model is the FunASR Paraformer Chinese streaming model. The renderer now sends one manually delimited system-audio interval instead of fixed five-second fragments, keeps the raw transcript, and lets the answer model repair likely homophones or missing punctuation without overwriting the raw text.
+The current bundled model is the FunASR Paraformer Chinese streaming model. The renderer supports both manually delimited intervals and a VAD-based near-real-time mode. The provider can optionally load a local CT-Punc model through `--punc-model`; if that directory is absent, the service returns the raw Paraformer text without delaying startup. The answer model may reason about likely homophones or missing punctuation, but it must not overwrite the raw transcript.
 
 Candidate providers checked for future experiments:
 

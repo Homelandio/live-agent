@@ -15,13 +15,21 @@ import numpy as np
 
 
 class Transcriber:
-    def __init__(self, model_dir: Path):
+    def __init__(self, model_dir: Path, punc_model_dir: Path | None = None, hotword_file: Path | None = None):
         try:
             from funasr import AutoModel
         except ImportError as exc:
             raise RuntimeError("FunASR 运行时未安装") from exc
         self.lock = threading.Lock()
         self.model = AutoModel(model=str(model_dir), device="cpu", disable_update=True)
+        self.punc_model = None
+        self.punc_model_dir = None
+        if punc_model_dir and punc_model_dir.exists():
+            self.punc_model = AutoModel(model=str(punc_model_dir), device="cpu", disable_update=True)
+            self.punc_model_dir = str(punc_model_dir)
+        self.hotwords = []
+        if hotword_file and hotword_file.exists():
+            self.hotwords = [line.strip() for line in hotword_file.read_text(encoding="utf-8").splitlines() if line.strip()]
 
     @staticmethod
     def decode_wav(payload: bytes) -> np.ndarray:
@@ -37,10 +45,20 @@ class Transcriber:
             audio = audio.reshape(-1, channels).mean(axis=1)
         return audio
 
-    def transcribe(self, payload: bytes) -> str:
+    @staticmethod
+    def result_text(results) -> str:
+        texts = []
+        for result in results or []:
+            if isinstance(result, dict):
+                text = result.get("text") or result.get("preds") or ""
+                if text:
+                    texts.append(str(text))
+        return "".join(texts).strip()
+
+    def transcribe(self, payload: bytes) -> dict:
         audio = self.decode_wav(payload)
         if audio.size < 160:
-            return ""
+            return {"text": "", "rawText": "", "punctuatedText": "", "punctuationApplied": False}
         with self.lock:
             # The renderer already sends short, finalized segments. Passing
             # streaming chunk parameters to that whole segment causes the
@@ -49,13 +67,20 @@ class Transcriber:
                 input=audio,
                 batch_size_s=300,
             )
-        texts = []
-        for result in results or []:
-            if isinstance(result, dict):
-                text = result.get("text") or result.get("preds") or ""
-                if text:
-                    texts.append(str(text))
-        return "".join(texts).strip()
+            raw_text = self.result_text(results)
+            punctuated_text = raw_text
+            if raw_text and self.punc_model is not None:
+                try:
+                    punctuated_text = self.result_text(self.punc_model.generate(input=raw_text)) or raw_text
+                except Exception:
+                    # An optional punctuation model must never make ASR unavailable.
+                    punctuated_text = raw_text
+        return {
+            "text": punctuated_text,
+            "rawText": raw_text,
+            "punctuatedText": punctuated_text,
+            "punctuationApplied": bool(self.punc_model is not None and punctuated_text != raw_text),
+        }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -71,7 +96,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self.send_json(200, {"ok": True, "model": "FunASR Paraformer 中文流式"})
+            transcriber = self.transcriber
+            self.send_json(200, {
+                "ok": True,
+                "model": "FunASR Paraformer 中文流式",
+                "punctuation": bool(transcriber.punc_model is not None),
+                "hotwords": len(transcriber.hotwords),
+            })
         else:
             self.send_json(404, {"error": "not found"})
 
@@ -83,8 +114,8 @@ class Handler(BaseHTTPRequestHandler):
             size = int(self.headers.get("Content-Length", "0"))
             if size <= 0 or size > 20 * 1024 * 1024:
                 raise ValueError("音频请求大小无效")
-            text = self.transcriber.transcribe(self.rfile.read(size))
-            self.send_json(200, {"text": text})
+            result = self.transcriber.transcribe(self.rfile.read(size))
+            self.send_json(200, result)
         except Exception as exc:
             self.send_json(500, {"error": str(exc)})
 
@@ -95,9 +126,11 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", required=True, type=Path)
+    parser.add_argument("--punc-model", type=Path, default=None)
+    parser.add_argument("--hotword-file", type=Path, default=None)
     parser.add_argument("--port", type=int, default=0)
     args = parser.parse_args()
-    transcriber = Transcriber(args.model_dir)
+    transcriber = Transcriber(args.model_dir, args.punc_model, args.hotword_file)
     Handler.transcriber = transcriber
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"READY {server.server_port}", flush=True)

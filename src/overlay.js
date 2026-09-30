@@ -3,6 +3,11 @@ let collapsed = false;
 let autoAnswer = true;
 let screenshotDraft = '';
 const POSITION_LABELS = { top: '屏幕上方', right: '屏幕右侧', bottom: '屏幕下方', left: '屏幕左侧' };
+const SYSTEM_AUDIO_MODE_LABELS = { manual: '手动截断模式', stream: '实时流式模式' };
+
+function normalizedSystemAudioMode(value) {
+  return value === 'stream' ? 'stream' : 'manual';
+}
 
 function applyDisplaySettings() {
   const backgroundTransparency = Number($('backgroundOpacity').value);
@@ -24,6 +29,17 @@ function loadDisplaySettings() {
 function loadPositionSetting() {
   const value = ['top', 'right', 'bottom', 'left'].includes(localStorage.overlayPosition) ? localStorage.overlayPosition : 'top';
   applyPositionSetting(value, false);
+}
+
+function applySystemAudioMode(value, notify = false) {
+  const mode = normalizedSystemAudioMode(value);
+  document.querySelectorAll('.mode-option').forEach(option => {
+    const selected = option.dataset.mode === mode;
+    option.classList.toggle('is-selected', selected);
+    option.setAttribute('aria-pressed', String(selected));
+  });
+  localStorage.systemAudioMode = mode;
+  if (notify) window.liveAgent.sendOverlayCommand({ type: 'set-system-audio-mode', mode });
 }
 
 function applyPositionSetting(value, moveWindow = true) {
@@ -126,7 +142,11 @@ window.liveAgent.onOverlayData(data => {
   if (data.micPending) updateToggle($('microphone'), true, '麦克风：准备中');
   else if (typeof data.micActive === 'boolean') updateToggle($('microphone'), data.micActive, data.micActive ? '麦克风：开' : '麦克风：关');
   if (data.systemAudioPending) updateToggle($('systemAudio'), true, '系统声音：整理中');
-  else if (typeof data.systemAudioActive === 'boolean') updateToggle($('systemAudio'), data.systemAudioActive, data.systemAudioActive ? '系统声音：录题中' : '系统声音：开始录题');
+  else if (typeof data.systemAudioActive === 'boolean') {
+    const mode = normalizedSystemAudioMode(data.systemAudioMode || localStorage.systemAudioMode);
+    updateToggle($('systemAudio'), data.systemAudioActive, data.systemAudioActive ? (mode === 'stream' ? '系统声音：监听中' : '系统声音：录题中') : '系统声音：开始录题');
+    applySystemAudioMode(mode);
+  }
 });
 
 function updateToggle(button, active, label) {
@@ -187,6 +207,11 @@ $('deleteScreenshot').onclick = () => clearScreenshotDraft();
 $('sendScreenshot').onclick = submitOverlayQuestion;
 $('systemAudio').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-system-audio' });
 $('microphone').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-microphone' });
+$('systemAudioModePicker').addEventListener('click', event => {
+  const option = event.target.closest('.mode-option');
+  if (!option) return;
+  applySystemAudioMode(option.dataset.mode, true);
+});
 $('clear').onclick = () => { clearScreenshotDraft(); window.liveAgent.sendOverlayCommand({ type: 'clear' }); };
 $('auto').onclick = () => { autoAnswer = !autoAnswer; updateToggle($('auto'), autoAnswer, `自动回答：${autoAnswer ? '开' : '关'}`); window.liveAgent.sendOverlayCommand({ type: 'toggle-auto', value: autoAnswer }); };
 $('displaySettings').onclick = () => { const panel = $('settingsPanel'); panel.hidden = !panel.hidden; updateToggle($('displaySettings'), !panel.hidden, panel.hidden ? '显示' : '隐藏'); };
@@ -213,3 +238,4 @@ document.addEventListener('keydown', event => {
 });
 loadDisplaySettings();
 loadPositionSetting();
+applySystemAudioMode(localStorage.systemAudioMode || 'manual');

@@ -11,7 +11,7 @@ const DEFAULT_PROVIDER = {
   healthPath: '/health',
   transcribePath: '/transcribe',
   command: 'runtime/python.exe',
-  args: ['server.py', '--model-dir', 'models/paraformer-zh-streaming', '--port', '0']
+  args: ['server.py', '--model-dir', 'models/paraformer-zh-streaming', '--punc-model', 'models/ct-punc', '--hotword-file', 'models/hotwords.txt', '--port', '0']
 };
 
 function readJson(filePath) {

@@ -98,6 +98,17 @@ footer #microphone, footer #systemAudio { min-width: 88px; }
 .position-option { display: block; width: 100%; margin: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); text-align: left; }
 .position-option:hover, .position-option.is-selected { background: rgba(159, 113, 45, .48); border-color: rgba(226, 178, 99, .65); color: rgba(255, 247, 226, .94); }
 .position-option:focus-visible { border-color: var(--accent-strong); outline: none; }
+.mode-setting { margin-top: 8px; color: var(--muted); font-size: 10px; }
+.mode-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 5px; }
+.mode-option { min-width: 0; margin: 0; padding: 6px 7px; border-color: rgba(205, 214, 224, .24); text-align: center; }
+.mode-option.is-selected, .mode-option.is-selected:hover {
+  background: rgba(159, 113, 45, .62);
+  border-color: var(--accent-strong);
+  color: rgba(255, 247, 226, .94);
+  box-shadow: inset 0 0 0 1px rgba(240, 201, 137, .72), inset 0 -2px 0 rgba(8, 12, 18, .64);
+  transform: translateY(1px);
+}
+.mode-option:focus-visible { border-color: var(--accent-strong); outline: none; }
 .collapsed main, .collapsed .settings-panel { display: none; }
 .collapsed { height: 45px; min-height: 45px; }
 @media (max-width: 440px) {

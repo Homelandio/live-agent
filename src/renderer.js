@@ -27,9 +27,23 @@ let selectedImage = null;
 let audioStream;
 let audioRecorder;
 let systemAudioStopTimer;
+let systemAudioContext;
+let systemAudioAnalyser;
+let systemAudioData;
+let systemAudioMeterTimer;
+let systemAudioSegmenter;
+let systemAudioWanted = false;
+let systemAudioStopping = false;
+let systemAudioParts = [];
+let systemAudioTranscriptionQueue = Promise.resolve();
+let systemAudioStoppingStream;
 const liveAnswerTimers = new Set();
 let liveAnswerQueue = Promise.resolve();
 const SYSTEM_AUDIO_MAX_CAPTURE_MS = 10 * 60 * 1000;
+const SYSTEM_STREAM_END_SILENCE_MS = 1600;
+const SYSTEM_STREAM_MIN_SPEECH_MS = 500;
+const SYSTEM_STREAM_MAX_SPEECH_MS = 90000;
+const SYSTEM_STREAM_MAX_IDLE_MS = 5000;
 const MIC_END_SILENCE_MS = 1200;
 const MIC_MAX_SEGMENT_MS = 15000;
 let liveSessionActive = false;
@@ -44,6 +58,37 @@ let micPending = false;
 let systemAudioPending = false;
 let loadedSkills = [];
 let activeSkillSlugs = [];
+let systemAudioMode = stored('systemAudioMode') === 'stream' ? 'stream' : 'manual';
+
+function normalizeSystemAudioMode(value) {
+  return value === 'stream' ? 'stream' : 'manual';
+}
+
+function systemAudioModeLabel(mode = systemAudioMode) {
+  return normalizeSystemAudioMode(mode) === 'stream' ? '实时流式模式' : '手动截断模式';
+}
+
+function systemAudioIdleLabel(mode = systemAudioMode) {
+  return normalizeSystemAudioMode(mode) === 'stream' ? '系统声音：开始监听' : '系统声音：开始录题';
+}
+
+function setSystemAudioMode(value, { persist = true, notify = true } = {}) {
+  const mode = normalizeSystemAudioMode(value);
+  if ((audioStream?.active || systemAudioPending) && mode !== systemAudioMode) {
+    setState('请先结束当前系统声音采集，再切换模式');
+    if ($('systemAudioMode')) $('systemAudioMode').value = systemAudioMode;
+    return false;
+  }
+  systemAudioMode = mode;
+  if (persist) store('systemAudioMode', mode);
+  if ($('systemAudioMode')) $('systemAudioMode').value = mode;
+  if (!$('systemAudio')?.classList.contains('is-active')) setToggleButton($('systemAudio'), false, systemAudioIdleLabel(mode));
+  if ($('audioStatus') && !audioStream?.active && !systemAudioPending) {
+    $('audioStatus').textContent = `${systemAudioModeLabel(mode)}：${mode === 'stream' ? '自动按语音停顿切分并转写。' : '点击开始，完整播放问题后再次点击结束。'} 首次使用请选择共享窗口或屏幕并勾选“共享音频”。`;
+  }
+  if (notify) window.liveAgent.updateOverlay({ ...overlayLivePayload(), systemAudioMode: mode });
+  return true;
+}
 
 function taskMode() {
   return $('taskMode')?.value || stored('taskMode') || 'chat';
@@ -160,8 +205,9 @@ function renderLiveAnswers(container, answers) {
 
 function liveContextText() {
   if (!liveSession) return '';
-  const systemEntries = liveSession.entries.filter(item => item.source === 'system').slice(-16).map(item => `- ${item.text}`).join('\n');
-  const micEntries = liveSession.entries.filter(item => item.source === 'mic').slice(-16).map(item => `- ${item.text}`).join('\n');
+  const formatEntry = item => item.rawText && item.rawText !== item.text ? `- ${item.text}\n  原始转写：${item.rawText}` : `- ${item.text}`;
+  const systemEntries = liveSession.entries.filter(item => item.source === 'system').slice(-16).map(formatEntry).join('\n');
+  const micEntries = liveSession.entries.filter(item => item.source === 'mic').slice(-16).map(formatEntry).join('\n');
   const answers = liveSession.answers.slice(-8).map((item, index) => `[回答 ${index + 1}] 问题：${item.question}\n回答：${item.text || '尚未完成'}`).join('\n');
   const sections = [];
   if (systemEntries) sections.push('系统声音识别的观众问题（可作为问题上下文，但仍需结合资料核实）：\n' + systemEntries);
@@ -178,7 +224,8 @@ function overlayLivePayload() {
     micActive: Boolean(micStream?.active),
     micPending,
     systemAudioActive: Boolean(audioStream?.active),
-    systemAudioPending
+    systemAudioPending,
+    systemAudioMode
   };
 }
 
@@ -213,13 +260,14 @@ function updateLiveAnswer(id, patch) {
   syncLiveSessionViews();
 }
 
-function recordLiveInput(source, rawText) {
-  const text = String(rawText || '').replace(/\s+/g, ' ').trim();
+function recordLiveInput(source, rawText, displayText = rawText) {
+  const raw = String(rawText || '').replace(/\s+/g, ' ').trim();
+  const text = String(displayText || rawText || '').replace(/\s+/g, ' ').trim();
   if (!text) return null;
   const session = ensureLiveSession();
   const previous = session.entries.at(-1);
-  if (previous && previous.source === source && previous.text === text) return previous;
-  const entry = { id: `${session.id}-entry-${session.entries.length + 1}`, source, text, createdAt: new Date().toISOString() };
+  if (previous && previous.source === source && previous.text === text && previous.rawText === raw) return previous;
+  const entry = { id: `${session.id}-entry-${session.entries.length + 1}`, source, text, rawText: raw || text, createdAt: new Date().toISOString() };
   session.entries.push(entry);
   if (source === 'system') {
     const answerItem = { id: `${entry.id}-answer`, questionId: entry.id, question: text, text: '', status: 'pending', sources: [], createdAt: new Date().toISOString() };
@@ -273,7 +321,7 @@ function askFromLivePanel(question, image = null) {
 async function persistLiveSession(session = liveSession) {
   if (!session?.entries.length) return;
   const messages = [];
-  for (const entry of session.entries) messages.push({ role: 'user', content: `[${sourceLabel(entry.source)}] ${entry.text}`, source: entry.source, createdAt: entry.createdAt });
+  for (const entry of session.entries) messages.push({ role: 'user', content: `[${sourceLabel(entry.source)}] ${entry.text}`, rawText: entry.rawText, source: entry.source, createdAt: entry.createdAt });
   for (const item of session.answers) messages.push({ role: 'assistant', content: item.text || '回答未完成', question: item.question, sources: item.sources || [], createdAt: item.completedAt || item.createdAt });
   try {
     await window.liveAgent.vaultSaveConversation({ id: session.id, title: `直播会话 ${timeLabel(session.startedAt)}`, messages, sessionType: 'live', liveEntries: session.entries, liveAnswers: session.answers, startedAt: session.startedAt });
@@ -732,22 +780,42 @@ function stopAllInput() {
 function stopSystemAudio(reason = '系统声音录题已结束') {
   clearTimeout(systemAudioStopTimer);
   systemAudioStopTimer = null;
+  systemAudioWanted = false;
+  systemAudioStopping = true;
   const stream = audioStream;
   const recorder = audioRecorder;
   audioStream = null;
   audioRecorder = null;
+  systemAudioStoppingStream = stream;
+  clearInterval(systemAudioMeterTimer);
+  systemAudioMeterTimer = null;
+  systemAudioStopReason = reason;
   if (recorder?.state === 'recording') {
     systemAudioPending = true;
     setToggleButton($('systemAudio'), true, '系统声音：整理中');
     reportInputStatus(`${reason}，正在完整转写...`, false, true);
     recorder.stop();
-    stream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
     return;
   }
+  finishSystemAudioCapture(stream, reason);
+}
+
+let systemAudioStopReason = '系统声音录题已结束';
+
+function finishSystemAudioCapture(stream, reason = systemAudioStopReason) {
   stream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
+  systemAudioStoppingStream = null;
+  const context = systemAudioContext;
+  systemAudioContext = null;
+  systemAudioAnalyser = null;
+  systemAudioData = null;
+  systemAudioSegmenter = null;
+  systemAudioParts = [];
+  systemAudioStopping = false;
   systemAudioPending = false;
-  setToggleButton($('systemAudio'), false, '系统声音：关');
-  if (stream) reportInputStatus(reason, false);
+  if (context && context.state !== 'closed') void context.close();
+  setToggleButton($('systemAudio'), false, systemAudioIdleLabel());
+  reportInputStatus(reason, false, false);
 }
 
 function formatSize(size) {
@@ -1195,6 +1263,10 @@ $('audioSource').onchange = event => {
   window.liveAgent.setDisplaySource(event.target.value);
   reportInputStatus('已选择系统声音来源，点击“系统声音”开始监听', false);
 };
+$('systemAudioMode').onchange = event => {
+  const mode = normalizeSystemAudioMode(event.target.value);
+  if (setSystemAudioMode(mode)) setState(`已切换为${systemAudioModeLabel(mode)}`);
+};
 $('provider').onchange = event => applyProvider(event.target.value);
 $('protect').onchange = event => window.liveAgent.protectWindow(event.target.checked);
 $('knowledge').oninput = event => knowledge = event.target.value;
@@ -1236,6 +1308,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (savedModel && [...$('model').options].some(option => option.value === savedModel)) $('model').value = savedModel;
   $('webSearchEnabled').checked = stored('webSearchEnabled') !== '0';
   $('taskMode').value = stored('taskMode') || 'chat';
+  setSystemAudioMode(systemAudioMode, { persist: false, notify: false });
   loadDisplaySources();
   if (stored('key')) try { $('key').value = await window.liveAgent.secureUnstore(stored('key')); } catch {}
   startTranscriberStatusPolling();
@@ -1261,6 +1334,7 @@ window.liveAgent.onOverlayCommand(async command => {
     if (audioStream?.active) stopSystemAudio();
     else await startSystemAudio();
   }
+  if (command.type === 'set-system-audio-mode') setSystemAudioMode(command.mode);
   if (command.type === 'toggle-microphone') {
     if (micWanted) stopRecognition();
     else startRecognition();
@@ -1283,6 +1357,8 @@ async function startSystemAudio() {
   if (systemAudioPending) return false;
   if (audioStream?.active) { stopSystemAudio(); return false; }
   ensureLiveSession();
+  systemAudioWanted = true;
+  systemAudioStopping = false;
   try {
     setToggleButton($('systemAudio'), true, '系统声音：准备中');
     reportInputStatus('正在确认本地转录引擎...', false, true);
@@ -1301,24 +1377,33 @@ async function startSystemAudio() {
       audioTracks = audioStream.getAudioTracks();
     }
     if (!audioTracks.length) {
+      systemAudioWanted = false;
       audioStream.getTracks().forEach(track => track.stop());
       audioStream = null;
       reportInputStatus('没有捕获到系统声音，请重新选择并勾选“共享音频”。', false);
-      setToggleButton($('systemAudio'), false, '系统声音：关');
+      setToggleButton($('systemAudio'), false, systemAudioIdleLabel());
       return false;
     }
     await waitForLocalTranscriber();
     audioStream.getTracks().forEach(track => { track.onended = () => { if (!audioStream?.active) stopSystemAudio('系统声音共享已结束'); }; });
     systemAudioPending = false;
-    setToggleButton($('systemAudio'), true, '系统声音：录题中');
-    reportInputStatus('系统声音录题中，再次点击“系统声音”结束本段并回答', true);
-    recordSystemAudioInterval();
+    if (systemAudioMode === 'stream') {
+      setToggleButton($('systemAudio'), true, '系统声音：监听中');
+      await startSystemAudioStreaming();
+      reportInputStatus(`实时流式模式：监听中，连续静音 ${SYSTEM_STREAM_END_SILENCE_MS / 1000} 秒后提交一段`, true);
+    } else {
+      setToggleButton($('systemAudio'), true, '系统声音：录题中');
+      reportInputStatus('手动截断模式：完整播放问题后再次点击“系统声音”结束本段', true);
+      recordSystemAudioInterval();
+    }
+    systemAudioStopTimer = setTimeout(() => stopSystemAudio('系统声音达到安全时长，已自动结束本段'), SYSTEM_AUDIO_MAX_CAPTURE_MS);
     return true;
   } catch (error) {
-    if (audioStream) stopSystemAudio();
+    if (audioStream || audioRecorder) stopSystemAudio();
+    else systemAudioWanted = false;
     const detail = displayCaptureError(error);
     reportInputStatus('系统声音未启动：' + detail, false);
-    setToggleButton($('systemAudio'), false, '系统声音：关');
+    setToggleButton($('systemAudio'), false, systemAudioIdleLabel());
     return false;
   }
 }
@@ -1346,30 +1431,120 @@ function displayCaptureError(error) {
   return message;
 }
 
+function systemAudioMimeType() {
+  if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
+  if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
+  if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) return 'audio/ogg;codecs=opus';
+  return '';
+}
+
+function queueSystemAudioTranscription(blob) {
+  if (!blob || !blob.size) return;
+  systemAudioTranscriptionQueue = systemAudioTranscriptionQueue
+    .then(() => transcribeBlob(blob, 'system'))
+    .catch(error => reportInputStatus('本地系统声音转写失败，将继续监听：' + error.message, Boolean(audioStream?.active)));
+}
+
+function systemAudioRms() {
+  if (!systemAudioAnalyser || !systemAudioData) return 0;
+  systemAudioAnalyser.getFloatTimeDomainData(systemAudioData);
+  let energy = 0;
+  for (const sample of systemAudioData) energy += sample * sample;
+  return Math.sqrt(energy / Math.max(1, systemAudioData.length));
+}
+
+function requestSystemAudioSegmentFlush() {
+  if (systemAudioMode !== 'stream' || systemAudioStopping) return;
+  if (audioRecorder?.state === 'recording') audioRecorder.stop();
+}
+
+function monitorSystemAudio() {
+  if (!systemAudioWanted || systemAudioMode !== 'stream' || !systemAudioSegmenter || !audioStream?.active) return;
+  const result = systemAudioSegmenter.observe(systemAudioRms(), performance.now());
+  if (result.action === 'voice-start') reportInputStatus('实时流式模式：正在记录系统声音问题...', true, false);
+  if (result.action === 'flush') {
+    if (result.hasVoice) requestSystemAudioSegmentFlush();
+    else systemAudioSegmenter.reset(performance.now());
+  }
+}
+
+function startSystemAudioSegmentRecorder() {
+  if (!systemAudioWanted || systemAudioMode !== 'stream' || systemAudioStopping || !audioStream?.active || audioRecorder) return;
+  const mimeType = systemAudioMimeType();
+  if (!mimeType) throw new Error('当前系统不支持可解码的系统声音录音格式');
+  const captureStream = new MediaStream(audioStream.getAudioTracks());
+  const recorder = new MediaRecorder(captureStream, { mimeType });
+  audioRecorder = recorder;
+  systemAudioParts = [];
+  systemAudioSegmenter?.reset(performance.now());
+  const hadVoiceAtStop = () => Boolean(systemAudioSegmenter?.hasVoice);
+  recorder.ondataavailable = event => { if (event.data.size) systemAudioParts.push(event.data); };
+  recorder.onerror = event => reportInputStatus('系统声音流式录音失败：' + (event.error?.message || 'MediaRecorder 错误'), Boolean(audioStream?.active));
+  recorder.onstop = () => {
+    if (audioRecorder === recorder) audioRecorder = null;
+    const parts = systemAudioParts;
+    systemAudioParts = [];
+    const hadVoice = hadVoiceAtStop();
+    const blob = parts.length ? new Blob(parts, { type: mimeType }) : null;
+    const shouldContinue = systemAudioWanted && !systemAudioStopping && audioStream?.active;
+    if (hadVoice && blob) queueSystemAudioTranscription(blob);
+    if (shouldContinue) {
+      systemAudioSegmenter?.reset(performance.now());
+      try { startSystemAudioSegmentRecorder(); }
+      catch (error) { reportInputStatus('系统声音流式录音无法继续：' + error.message, false); stopSystemAudio(); }
+      return;
+    }
+    if (systemAudioStopping) finishSystemAudioCapture(systemAudioStoppingStream || audioStream, systemAudioStopReason);
+  };
+  try { recorder.start(250); }
+  catch (error) {
+    if (audioRecorder === recorder) audioRecorder = null;
+    captureStream.getTracks().forEach(track => track.stop());
+    throw error;
+  }
+}
+
+async function startSystemAudioStreaming() {
+  if (!audioStream?.active) return;
+  systemAudioContext = new AudioContext();
+  await systemAudioContext.resume();
+  const analyserSource = systemAudioContext.createMediaStreamSource(new MediaStream(audioStream.getAudioTracks()));
+  systemAudioAnalyser = systemAudioContext.createAnalyser();
+  systemAudioAnalyser.fftSize = 2048;
+  systemAudioAnalyser.smoothingTimeConstant = 0.72;
+  systemAudioData = new Float32Array(systemAudioAnalyser.fftSize);
+  analyserSource.connect(systemAudioAnalyser);
+  systemAudioSegmenter = LiveAudioSegmentation.createVoiceSegmenter({
+    endSilenceMs: SYSTEM_STREAM_END_SILENCE_MS,
+    minSpeechMs: SYSTEM_STREAM_MIN_SPEECH_MS,
+    maxSpeechMs: SYSTEM_STREAM_MAX_SPEECH_MS,
+    maxIdleMs: SYSTEM_STREAM_MAX_IDLE_MS
+  });
+  clearInterval(systemAudioMeterTimer);
+  systemAudioMeterTimer = setInterval(monitorSystemAudio, 50);
+  startSystemAudioSegmentRecorder();
+}
+
 function recordSystemAudioInterval() {
   if (!audioStream?.active) return;
-  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
-  const audioOnlyStream = new MediaStream(audioStream.getAudioTracks());
-  const recorder = new MediaRecorder(audioOnlyStream, { mimeType });
+  const mimeType = systemAudioMimeType();
+  if (!mimeType) throw new Error('当前系统不支持可解码的系统声音录音格式');
+  const captureStream = new MediaStream(audioStream.getAudioTracks());
+  const recorder = new MediaRecorder(captureStream, { mimeType });
   audioRecorder = recorder;
   const parts = [];
   recorder.ondataavailable = event => { if (event.data.size) parts.push(event.data); };
   recorder.onerror = event => reportInputStatus('系统声音录题失败：' + (event.error?.message || 'MediaRecorder 错误'), false);
   recorder.onstop = async () => {
     if (audioRecorder === recorder) audioRecorder = null;
-    clearTimeout(systemAudioStopTimer);
-    systemAudioStopTimer = null;
     systemAudioPending = true;
     setToggleButton($('systemAudio'), true, '系统声音：整理中');
     reportInputStatus('本段系统声音已结束，正在完整转写...', false, true);
     if (parts.length) await transcribeBlob(new Blob(parts, { type: mimeType }), 'system');
-    else reportInputStatus('系统声音没有产生音频数据，请检查共享音频选项。', false);
-    systemAudioPending = false;
-    setToggleButton($('systemAudio'), false, '系统声音：关');
-    reportInputStatus('本段系统声音已转写，可再次点击开始下一段', false);
+    else reportInputStatus('系统声音没有产生音频数据，请检查共享音频选项。', false, true);
+    finishSystemAudioCapture(systemAudioStoppingStream || captureStream, '本段系统声音已转写，可再次点击开始下一段');
   };
-  try { recorder.start(250); } catch (error) { reportInputStatus('系统声音录制无法开始：' + error.message, false); return; }
-  systemAudioStopTimer = setTimeout(() => stopSystemAudio('录题达到安全时长，已自动结束本段'), SYSTEM_AUDIO_MAX_CAPTURE_MS);
+  try { recorder.start(250); } catch (error) { captureStream.getTracks().forEach(track => track.stop()); throw error; }
 }
 
 async function localWavBase64(blob, source = 'system') {
@@ -1416,7 +1591,9 @@ async function transcribeBlob(blob, source = 'system') {
     const audioBase64 = await localWavBase64(blob, source);
     if (!audioBase64) return;
     const data = await window.liveAgent.localTranscribe({ audioBase64, mimeType: 'audio/wav' });
-    if (data.text) recordLiveInput(source, data.text);
+    const rawText = String(data.rawText || data.text || '').trim();
+    const displayText = String(data.punctuatedText || data.text || rawText).trim();
+    if (rawText || displayText) recordLiveInput(source, rawText || displayText, displayText || rawText);
   } catch (error) {
     if (source === 'mic') reportMicrophoneStatus('本地麦克风转写失败，将继续监听：' + error.message, Boolean(micStream?.active));
     else reportInputStatus('本地转写失败，将继续监听：' + error.message, Boolean(audioStream?.active));
