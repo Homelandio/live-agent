@@ -72,3 +72,12 @@ button:focus-visible,input:focus,textarea:focus,.settings-panel select:focus{bor
 .skill-chip{display:inline-flex;align-items:center;padding:4px 7px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:10px;background:var(--surface2)}
 .skill-chip.active{border-color:oklch(.60 .09 78);color:var(--ink);background:oklch(.25 .035 78)}
 .skill-panel button{width:100%}
+.workspace-access{padding:10px 11px;border:1px solid var(--line);border-radius:6px;background:oklch(.145 .01 250)}
+.workspace-access .row{flex-wrap:wrap}
+.workspace-access .hint{margin:8px 0 0}
+.workspace-list{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:120px;overflow:auto}
+.workspace-root{display:flex;align-items:center;gap:6px;padding:6px 7px;border:1px solid var(--line);border-radius:5px;background:oklch(.18 .012 250);font-size:10px}
+.workspace-root span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.workspace-root small{color:var(--muted);white-space:nowrap}
+.workspace-root button{flex:0 0 auto;padding:3px 5px;background:transparent;border:0;color:var(--muted);font-size:11px}
+.workspace-root button:hover{background:transparent;color:var(--attention)}

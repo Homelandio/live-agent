@@ -7,6 +7,16 @@ const { spawn, spawnSync } = require('child_process');
 const { buildSkillContext, ensureUserSkillsRoot, listSkillMetadata } = require('./agent-skills');
 const { loadVaultFile, saveVaultFile } = require('./vault-store');
 const { loadTranscriberProvider, resolveProviderCommand } = require('./transcriber-config');
+const {
+  isPathWithinRoot,
+  listWorkspaceFiles,
+  normalizeRoots,
+  parseDocument,
+  rankDocumentChunks,
+  searchTerms,
+  splitText,
+  SUPPORTED_EXTENSIONS
+} = require('./workspace-tools');
 
 let win;
 let overlay;
@@ -20,6 +30,9 @@ let transcriberError = '';
 let transcriberProvider;
 let pendingDisplaySourceId = '';
 let overlayPosition = 'top';
+let workspacePath;
+let workspaceRoots = [];
+const workspaceCache = new Map();
 const OVERLAY_POSITION_MARGIN = 18;
 
 function builtinSkillsRoot() {
@@ -224,27 +237,68 @@ function loadVault() {
 function saveVault() {
   vault = saveVaultFile(vaultPath, vault);
 }
-function splitText(text, size = 1400, overlap = 160) {
-  const chunks = []; for (let i = 0; i < text.length; i += Math.max(1, size - overlap)) chunks.push(text.slice(i, i + size)); return chunks;
+
+function loadWorkspace() {
+  workspacePath = path.join(app.getPath('userData'), 'workspace.json');
+  try {
+    const saved = JSON.parse(fs.readFileSync(workspacePath, 'utf8'));
+    workspaceRoots = normalizeRoots(saved.roots);
+  } catch { workspaceRoots = []; }
 }
-function searchTerms(text) {
-  const source = String(text || '').toLowerCase();
-  const raw = source.match(/[a-z0-9][a-z0-9_-]{1,}|[\u4e00-\u9fff]+/g) || [];
-  const terms = new Set();
-  for (const token of raw) {
-    if (/^[\u4e00-\u9fff]+$/.test(token)) {
-      if (token.length === 1) terms.add(token);
-      for (let i = 0; i < token.length - 1; i++) terms.add(token.slice(i, i + 2));
-    } else terms.add(token);
+
+function saveWorkspace() {
+  if (!workspacePath) return;
+  const tempPath = `${workspacePath}.tmp`;
+  const backupPath = `${workspacePath}.bak`;
+  fs.mkdirSync(path.dirname(workspacePath), { recursive: true });
+  fs.writeFileSync(tempPath, JSON.stringify({ version: 1, roots: workspaceRoots }, null, 2), 'utf8');
+  if (fs.existsSync(workspacePath)) {
+    try { fs.copyFileSync(workspacePath, backupPath); } catch { /* Keep the newest valid workspace list. */ }
   }
-  return [...terms];
+  try { fs.renameSync(tempPath, workspacePath); }
+  catch { fs.copyFileSync(tempPath, workspacePath); try { fs.unlinkSync(tempPath); } catch {} }
 }
-async function parseFile(filePath) {
-  const ext = path.extname(filePath).toLowerCase(); let text = '';
-  if (['.txt', '.md', '.json'].includes(ext)) text = fs.readFileSync(filePath, 'utf8');
-  else if (ext === '.pdf') { const { PDFParse } = require('pdf-parse'); const p = new PDFParse({ data: fs.readFileSync(filePath) }); text = (await p.getText()).text; await p.destroy(); }
-  else if (ext === '.docx') text = (await require('mammoth').extractRawText({ path: filePath })).value;
-  return text;
+
+function getWorkspaceState() {
+  const scan = listWorkspaceFiles(workspaceRoots);
+  return {
+    roots: workspaceRoots.slice(),
+    files: scan.files.map(file => ({ name: file.name, path: file.path, ext: file.ext, size: file.size, mtimeMs: file.mtimeMs })),
+    skipped: scan.skipped.length,
+    truncated: scan.truncated
+  };
+}
+
+function workspaceAllows(filePath) {
+  return workspaceRoots.some(root => isPathWithinRoot(filePath, root));
+}
+
+async function workspaceDocuments() {
+  const scan = listWorkspaceFiles(workspaceRoots);
+  const documents = [];
+  for (const file of scan.files) {
+    const cacheKey = file.path.toLowerCase();
+    const cached = workspaceCache.get(cacheKey);
+    if (cached && cached.size === file.size && cached.mtimeMs === file.mtimeMs) { documents.push(cached); continue; }
+    try {
+      const text = String(await parseDocument(file.path)).replace(/\u0000/g, '').trim().slice(0, 160000);
+      if (!text) continue;
+      const document = { ...file, text, chunks: splitText(text).map((content, index) => ({ index, content })) };
+      workspaceCache.set(cacheKey, document);
+      documents.push(document);
+    } catch { /* A single unreadable file must not block the rest of the workspace. */ }
+  }
+  return { documents, scan };
+}
+
+async function workspaceContext(query) {
+  const { documents, scan } = await workspaceDocuments();
+  const result = rankDocumentChunks(documents, query, 10);
+  return {
+    ...result,
+    filesScanned: scan.files.length,
+    sources: [...new Set(result.chunks.map(chunk => chunk.source))]
+  };
 }
 
 function createWindow() {
@@ -379,7 +433,7 @@ ipcMain.handle('web-search', async (_event, query) => {
   } catch (error) { return { ok: false, query: text, error: error.message, results: [] }; }
 });
 ipcMain.handle('choose-files', async () => {
-  const result = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Knowledge files', extensions: ['txt', 'md', 'pdf', 'docx', 'json'] }] });
+  const result = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Knowledge files', extensions: ['txt', 'md', 'pdf', 'docx', 'json', 'csv'] }] });
   if (result.canceled) return [];
   return result.filePaths.map(filePath => ({ name: path.basename(filePath), path: filePath, size: fs.statSync(filePath).size }));
 });
@@ -389,13 +443,13 @@ ipcMain.handle('vault-state', () => ({
   conversations: vault.conversations
 }));
 ipcMain.handle('vault-import', async () => {
-  const result = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Knowledge files', extensions: ['txt', 'md', 'pdf', 'docx', 'json'] }] });
+  const result = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Knowledge files', extensions: ['txt', 'md', 'pdf', 'docx', 'json', 'csv'] }] });
   if (result.canceled) return { imported: [], failed: [] };
   const imported = [];
   const failed = [];
   for (const filePath of result.filePaths) {
     try {
-      const stat = fs.statSync(filePath); const text = await parseFile(filePath); const id = `${stat.size}-${stat.mtimeMs}-${path.basename(filePath)}`;
+      const stat = fs.statSync(filePath); const text = await parseDocument(filePath); const id = `${stat.size}-${stat.mtimeMs}-${path.basename(filePath)}`;
       const doc = { id, name: path.basename(filePath), path: filePath, ext: path.extname(filePath), size: stat.size, addedAt: new Date().toISOString(), text, chunks: splitText(text).map((content, index) => ({ id: `${id}:${index}`, index, content })) };
       vault.files = vault.files.filter(x => x.id !== id && x.path !== filePath); vault.files.push(doc); imported.push({ id, name: doc.name, size: doc.size, chunks: doc.chunks.length });
     } catch (error) { failed.push({ name: path.basename(filePath), error: error.message }); }
@@ -433,6 +487,33 @@ ipcMain.handle('vault-context', (_event, query) => {
   }
   const memoryHit = vault.memories.some(memory => terms.some(term => String(memory.text || '').toLowerCase().includes(term)));
   rows.sort((a, b) => b.score - a.score || a.index - b.index); return { memories: vault.memories.slice(-20), chunks: rows.slice(0, 8), hasRelevant: rows.some(row => row.score > 0) || memoryHit };
+});
+ipcMain.handle('workspace-state', () => getWorkspaceState());
+ipcMain.handle('workspace-add-root', async () => {
+  const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'], title: '选择 Agent 可检索的工作区文件夹' });
+  if (result.canceled || !result.filePaths[0]) return getWorkspaceState();
+  workspaceRoots = normalizeRoots([...workspaceRoots, result.filePaths[0]]);
+  workspaceCache.clear();
+  saveWorkspace();
+  return getWorkspaceState();
+});
+ipcMain.handle('workspace-remove-root', (_event, root) => {
+  const target = path.resolve(String(root || ''));
+  workspaceRoots = workspaceRoots.filter(item => path.resolve(item) !== target);
+  workspaceCache.clear();
+  saveWorkspace();
+  return getWorkspaceState();
+});
+ipcMain.handle('workspace-refresh', () => { workspaceCache.clear(); return getWorkspaceState(); });
+ipcMain.handle('workspace-context', async (_event, query) => workspaceContext(String(query || '').slice(0, 800)));
+ipcMain.handle('workspace-read-file', async (_event, filePath) => {
+  const target = path.resolve(String(filePath || ''));
+  if (!workspaceAllows(target)) throw new Error('该文件不在已授权的工作区目录内');
+  if (!SUPPORTED_EXTENSIONS.has(path.extname(target).toLowerCase())) throw new Error('当前文件格式暂不支持文本解析');
+  const stat = fs.statSync(target);
+  if (!stat.isFile()) throw new Error('目标不是文件');
+  const text = String(await parseDocument(target)).slice(0, 200000);
+  return { name: path.basename(target), path: target, text, supported: Boolean(text.trim()) };
 });
 ipcMain.handle('agent-skills', (_event, payload = {}) => {
   const result = buildSkillContext({
@@ -505,7 +586,7 @@ else {
     if (liveMode && focusWindow(overlay)) return;
     if (!focusWindow(win)) createWindow();
   });
-  app.whenReady().then(() => { configureDisplayCapture(); loadVault(); userSkillsRoot(); createWindow(); createOverlay(); startLocalTranscriber(); });
+  app.whenReady().then(() => { configureDisplayCapture(); loadVault(); loadWorkspace(); userSkillsRoot(); createWindow(); createOverlay(); startLocalTranscriber(); });
   app.on('before-quit', () => stopLocalTranscriber());
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

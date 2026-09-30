@@ -32,6 +32,8 @@
       <div class="skill-panel"><div id="skillStatus" class="hint">正在加载技能...</div><div id="skillList" class="skill-list"></div><button id="openSkills" type="button" class="secondary">打开用户技能目录</button></div>
       <label class="check"><input id="webSearchEnabled" type="checkbox" checked> 知识库无匹配时检索网络</label>
       <p id="webSearchStatus" class="hint">仅把当前问题发送到公开检索服务，个人记忆不会发送给搜索引擎。</p>
+      <h2>授权工作区</h2>
+      <div class="workspace-access"><div class="row"><button id="workspaceAdd" type="button">添加文件夹</button><button id="workspaceRefresh" type="button" class="secondary">刷新</button></div><p id="workspaceStatus" class="hint">未授权工作区。添加后，Agent 会在回答前检索其中的文本资料。</p><div id="workspaceList" class="workspace-list"></div><p id="workspaceContextStatus" class="hint">本轮尚未检索工作区。</p></div>
       <h2>个人知识库</h2>
       <textarea id="knowledge" placeholder="临时补充本次对话的背景资料..."></textarea>
       <div class="row"><button id="clear">清空临时内容</button><button id="clearVault" class="secondary">清空知识库</button><button id="exportVault" class="secondary">导出备份</button><button id="restoreVault" class="secondary">恢复备份</button><button id="shot" class="secondary">发送截图提问</button></div>
