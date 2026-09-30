@@ -194,9 +194,12 @@ async function capturePrimaryScreenImage() {
   // Hide the protected overlay for the capture window as an extra guarantee;
   // this also handles capture paths that ignore WDA_EXCLUDEFROMCAPTURE.
   const restoreOverlay = overlay && !overlay.isDestroyed() && overlay.isVisible();
+  const restoreShortcutOverlay = shortcutOverlay && !shortcutOverlay.isDestroyed() && shortcutOverlay.isVisible();
   if (restoreOverlay) overlay.hide();
+  if (restoreShortcutOverlay) shortcutOverlay.hide();
   await new Promise(resolve => setTimeout(resolve, 60));
   enforceContentProtection(overlay, true);
+  enforceContentProtection(shortcutOverlay, true);
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize, fetchWindowIcons: false });
     const source = sources.find(item => String(item.display_id || '') === String(display.id)) || sources[0];
@@ -205,9 +208,31 @@ async function capturePrimaryScreenImage() {
   } finally {
     if (restoreOverlay && overlay && !overlay.isDestroyed()) {
       enforceContentProtection(overlay, true);
-      overlay.show();
-      overlay.focus();
+      overlay.showInactive();
     }
+    if (restoreShortcutOverlay && shortcutOverlay && !shortcutOverlay.isDestroyed()) {
+      enforceContentProtection(shortcutOverlay, true);
+      shortcutOverlay.showInactive();
+    }
+  }
+}
+
+async function captureScreenshotToOverlay() {
+  if (!liveMode || !overlay || overlay.isDestroyed() || overlay.webContents.isDestroyed()) return false;
+  try {
+    const data = await capturePrimaryScreenImage();
+    if (overlay && !overlay.isDestroyed() && !overlay.webContents.isDestroyed()) {
+      overlay.webContents.send('overlay-data', {
+        screenshotDraft: data,
+        status: '截图已直接放入悬浮对话框，可发送或删除'
+      });
+    }
+    return true;
+  } catch (error) {
+    if (overlay && !overlay.isDestroyed() && !overlay.webContents.isDestroyed()) {
+      overlay.webContents.send('overlay-data', { status: `截图失败：${error.message}` });
+    }
+    return false;
   }
 }
 
@@ -371,6 +396,7 @@ function cycleOverlayPosition() {
 
 function handleLiveShortcut(command) {
   if (command.type === 'cycle-overlay-position') { cycleOverlayPosition(); return; }
+  if (command.type === 'capture-screenshot') { void captureScreenshotToOverlay(); return; }
   if (command.type === 'toggle-overlay-collapse' || command.type === 'send-screenshot' || command.type === 'delete-screenshot') {
     if (overlay && !overlay.isDestroyed() && !overlay.webContents.isDestroyed()) overlay.webContents.send('overlay-command', command);
     return;
