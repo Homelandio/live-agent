@@ -109,10 +109,6 @@ footer #microphone, footer #systemAudio { min-width: 88px; }
   transform: translateY(1px);
 }
 .mode-option:focus-visible { border-color: var(--accent-strong); outline: none; }
-.shortcut-setting { margin-top: 9px; color: var(--muted); font-size: 10px; }
-.shortcut-list { display: grid; gap: 4px; margin-top: 5px; }
-.shortcut-list > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.shortcut-list kbd { flex: 0 0 auto; padding: 2px 5px; border: 1px solid rgba(205, 214, 224, .24); border-radius: 3px; color: rgba(244, 247, 250, .78); background: rgba(3, 8, 12, .24); font: inherit; font-size: 9px; }
 .collapsed main, .collapsed .settings-panel { display: none; }
 .collapsed { width: 100%; height: 45px; min-height: 45px; }
 .collapsed header { justify-content: flex-end; }

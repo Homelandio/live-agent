@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('liveAgent', {
   closeOverlay: () => ipcRenderer.invoke('close-overlay'),
   setOverlayCollapsed: collapsed => ipcRenderer.invoke('set-overlay-collapsed', Boolean(collapsed)),
   setOverlayPosition: position => ipcRenderer.invoke('set-overlay-position', position),
+  setOverlayDisplaySettings: values => ipcRenderer.invoke('set-overlay-display-settings', values),
   updateOverlay: payload => ipcRenderer.invoke('update-overlay', payload),
   sendOverlayCommand: command => ipcRenderer.invoke('overlay-command', command),
   openExternal: url => ipcRenderer.invoke('open-external', url),
@@ -48,6 +49,7 @@ contextBridge.exposeInMainWorld('liveAgent', {
   onOverlayData: callback => ipcRenderer.on('overlay-data', (_event, payload) => callback(payload)),
   onOverlayCommand: callback => ipcRenderer.on('overlay-command', (_event, payload) => callback(payload)),
   onLiveShortcutsStatus: callback => ipcRenderer.on('live-shortcuts-status', (_event, payload) => callback(payload)),
+  onOverlayDisplaySettings: callback => ipcRenderer.on('overlay-display-settings', (_event, payload) => callback(payload)),
   secureStore: value => ipcRenderer.invoke('secure-store', value),
   secureUnstore: value => ipcRenderer.invoke('secure-unstore', value)
 });

@@ -20,6 +20,7 @@ const {
 
 let win;
 let overlay;
+let shortcutOverlay;
 let tray;
 let isQuitting = false;
 let vaultPath;
@@ -32,12 +33,15 @@ let transcriberError = '';
 let transcriberProvider;
 let pendingDisplaySourceId = '';
 let overlayPosition = 'top';
+let overlayDisplaySettings = { backgroundTransparency: 80, textTransparency: 40 };
 let workspacePath;
 let workspaceRoots = [];
 const workspaceCache = new Map();
 const OVERLAY_POSITION_MARGIN = 18;
 const OVERLAY_EXPANDED_SIZE = { width: 520, height: 470 };
 const OVERLAY_COLLAPSED_SIZE = { width: 260, height: 45 };
+const SHORTCUT_OVERLAY_MARGIN = 18;
+const SHORTCUT_OVERLAY_SIZE = { width: 370, height: 240 };
 const DEFAULT_LIVE_SHORTCUTS = [
   { id: 'system-audio', label: '系统声音开始 / 截断', accelerator: 'Control+Alt+Shift+R', command: { type: 'toggle-system-audio' } },
   { id: 'overlay-collapse', label: '悬浮窗收起 / 展开', accelerator: 'Control+Alt+Shift+H', command: { type: 'toggle-overlay-collapse' } },
@@ -257,6 +261,13 @@ function collectRelatedTopics(items, output) {
 function setLiveMode(enabled) {
   liveMode = Boolean(enabled);
   if (liveMode) registerLiveShortcuts(); else unregisterLiveShortcuts();
+  if (liveMode) {
+    createShortcutOverlay();
+    if (shortcutOverlay && !shortcutOverlay.isDestroyed()) {
+      enforceContentProtection(shortcutOverlay, true);
+      shortcutOverlay.showInactive();
+    }
+  } else if (shortcutOverlay && !shortcutOverlay.isDestroyed()) shortcutOverlay.hide();
   enforceContentProtection(overlay, true);
   if (liveMode) enforceContentProtection(win, true);
   if (win && !win.isDestroyed()) {
@@ -278,6 +289,31 @@ function enforceContentProtection(target, enabled = true) {
     return true;
   } catch {
     return false;
+  }
+}
+
+function shortcutOverlayDisplay() {
+  try { return screen.getPrimaryDisplay(); } catch { return screen.getDisplayNearestPoint({ x: 0, y: 0 }); }
+}
+
+function positionShortcutOverlay() {
+  if (!shortcutOverlay || shortcutOverlay.isDestroyed()) return;
+  const display = shortcutOverlayDisplay();
+  const bounds = display.bounds;
+  const width = Math.min(SHORTCUT_OVERLAY_SIZE.width, Math.max(260, bounds.width - SHORTCUT_OVERLAY_MARGIN * 2));
+  const height = Math.min(SHORTCUT_OVERLAY_SIZE.height, Math.max(185, bounds.height - SHORTCUT_OVERLAY_MARGIN * 2));
+  shortcutOverlay.setBounds({
+    x: bounds.x + SHORTCUT_OVERLAY_MARGIN,
+    y: bounds.y + bounds.height - height - SHORTCUT_OVERLAY_MARGIN,
+    width,
+    height
+  }, false);
+  enforceContentProtection(shortcutOverlay, true);
+}
+
+function sendShortcutOverlayDisplaySettings() {
+  if (shortcutOverlay && !shortcutOverlay.isDestroyed() && !shortcutOverlay.webContents.isDestroyed()) {
+    shortcutOverlay.webContents.send('overlay-display-settings', overlayDisplaySettings);
   }
 }
 
@@ -367,6 +403,7 @@ function unregisterLiveShortcuts() {
 
 function notifyLiveShortcutStatus() {
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('live-shortcuts-status', shortcutConfigSnapshot());
+  if (shortcutOverlay && !shortcutOverlay.isDestroyed() && !shortcutOverlay.webContents.isDestroyed()) shortcutOverlay.webContents.send('live-shortcuts-status', shortcutConfigSnapshot());
 }
 
 function transcriberRoot() {
@@ -555,6 +592,55 @@ function createOverlay() {
   return overlay;
 }
 
+function createShortcutOverlay() {
+  if (shortcutOverlay && !shortcutOverlay.isDestroyed()) {
+    positionShortcutOverlay();
+    sendShortcutOverlayDisplaySettings();
+    notifyLiveShortcutStatus();
+    return shortcutOverlay;
+  }
+  const display = shortcutOverlayDisplay();
+  const bounds = display.bounds;
+  shortcutOverlay = new BrowserWindow({
+    x: bounds.x + SHORTCUT_OVERLAY_MARGIN,
+    y: bounds.y + bounds.height - SHORTCUT_OVERLAY_SIZE.height - SHORTCUT_OVERLAY_MARGIN,
+    width: SHORTCUT_OVERLAY_SIZE.width,
+    height: SHORTCUT_OVERLAY_SIZE.height,
+    show: false, frame: false, transparent: true, focusable: false, resizable: false,
+    movable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
+  });
+  shortcutOverlay.setIgnoreMouseEvents(true, { forward: true });
+  shortcutOverlay.setAlwaysOnTop(true, 'floating');
+  enforceContentProtection(shortcutOverlay, true);
+  shortcutOverlay.loadFile(path.join(__dirname, 'shortcut-overlay.html'));
+  const onDisplayChanged = () => { if (liveMode) positionShortcutOverlay(); };
+  screen.on('display-metrics-changed', onDisplayChanged);
+  screen.on('display-added', onDisplayChanged);
+  screen.on('display-removed', onDisplayChanged);
+  shortcutOverlay.on('ready-to-show', () => {
+    enforceContentProtection(shortcutOverlay, true);
+    positionShortcutOverlay();
+    sendShortcutOverlayDisplaySettings();
+    notifyLiveShortcutStatus();
+    if (liveMode) shortcutOverlay.showInactive();
+  });
+  shortcutOverlay.webContents.on('did-finish-load', () => {
+    enforceContentProtection(shortcutOverlay, true);
+    sendShortcutOverlayDisplaySettings();
+    notifyLiveShortcutStatus();
+  });
+  shortcutOverlay.on('show', () => enforceContentProtection(shortcutOverlay, true));
+  shortcutOverlay.on('closed', () => {
+    screen.removeListener('display-metrics-changed', onDisplayChanged);
+    screen.removeListener('display-added', onDisplayChanged);
+    screen.removeListener('display-removed', onDisplayChanged);
+    shortcutOverlay = null;
+  });
+  return shortcutOverlay;
+}
+
 ipcMain.handle('protect-window', (_event, enabled) => {
   enforceContentProtection(win, enabled);
   // The floating prompt is always protected; the main-window checkbox must not disable it.
@@ -569,6 +655,15 @@ function requestQuit() {
 }
 ipcMain.handle('quit-app', () => requestQuit());
 ipcMain.handle('set-live-mode', (_event, enabled) => setLiveMode(enabled));
+ipcMain.handle('set-overlay-display-settings', (_event, values = {}) => {
+  const backgroundValue = Number(values.backgroundTransparency);
+  const textValue = Number(values.textTransparency);
+  const backgroundTransparency = Math.max(35, Math.min(95, Number.isFinite(backgroundValue) ? backgroundValue : 80));
+  const textTransparency = Math.max(0, Math.min(80, Number.isFinite(textValue) ? textValue : 40));
+  overlayDisplaySettings = { backgroundTransparency, textTransparency };
+  sendShortcutOverlayDisplaySettings();
+  return overlayDisplaySettings;
+});
 ipcMain.handle('live-shortcuts-get', () => shortcutConfigSnapshot());
 ipcMain.handle('live-shortcuts-save', (_event, values = {}) => {
   if (!shortcutConfigPath) readLiveShortcutConfig();

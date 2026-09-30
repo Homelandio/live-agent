@@ -18,6 +18,7 @@ function applyDisplaySettings() {
   $('textValue').textContent = `${textTransparency}%`;
   localStorage.overlayBackgroundTransparency = String(backgroundTransparency);
   localStorage.overlayTextTransparency = String(textTransparency);
+  void window.liveAgent.setOverlayDisplaySettings({ backgroundTransparency, textTransparency });
 }
 
 function loadDisplaySettings() {
