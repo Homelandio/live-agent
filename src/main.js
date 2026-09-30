@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, safeStorage, session, dialog, shell, desktopCapturer, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, safeStorage, session, dialog, shell, desktopCapturer, screen, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -38,6 +38,15 @@ const workspaceCache = new Map();
 const OVERLAY_POSITION_MARGIN = 18;
 const OVERLAY_EXPANDED_SIZE = { width: 520, height: 470 };
 const OVERLAY_COLLAPSED_SIZE = { width: 260, height: 45 };
+const LIVE_SHORTCUTS = [
+  { accelerator: 'Control+Alt+Shift+R', command: { type: 'toggle-system-audio' } },
+  { accelerator: 'Control+Alt+Shift+H', command: { type: 'toggle-overlay-collapse' } },
+  { accelerator: 'Control+Alt+Shift+P', command: { type: 'cycle-overlay-position' } },
+  { accelerator: 'Control+Alt+Shift+S', command: { type: 'capture-screenshot' } },
+  { accelerator: 'Control+Alt+Shift+Enter', command: { type: 'send-screenshot' } },
+  { accelerator: 'Control+Alt+Shift+Backspace', command: { type: 'delete-screenshot' } }
+];
+let registeredLiveShortcuts = [];
 
 function builtinSkillsRoot() {
   return path.join(__dirname, 'skills');
@@ -168,6 +177,7 @@ function collectRelatedTopics(items, output) {
 
 function setLiveMode(enabled) {
   liveMode = Boolean(enabled);
+  if (liveMode) registerLiveShortcuts(); else unregisterLiveShortcuts();
   enforceContentProtection(overlay, true);
   if (liveMode) enforceContentProtection(win, true);
   if (win && !win.isDestroyed()) {
@@ -227,6 +237,48 @@ function focusWindow(target) {
     if (target === win && !liveMode) target.setSkipTaskbar(false);
     if (target.isMinimized()) target.restore(); target.show(); target.focus(); return true;
   } catch { return false; }
+}
+
+function forwardOverlayCommand(command) {
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('overlay-command', command);
+}
+
+function cycleOverlayPosition() {
+  const positions = ['top', 'right', 'bottom', 'left'];
+  const currentIndex = positions.indexOf(overlayPosition);
+  const next = positions[(currentIndex + 1) % positions.length];
+  setOverlayPosition(next);
+  if (overlay && !overlay.isDestroyed() && !overlay.webContents.isDestroyed()) {
+    const labels = { top: '上方', right: '右侧', bottom: '下方', left: '左侧' };
+    overlay.webContents.send('overlay-data', { overlayPosition: next, status: `悬浮窗位置：${labels[next]}` });
+  }
+}
+
+function handleLiveShortcut(command) {
+  if (command.type === 'cycle-overlay-position') { cycleOverlayPosition(); return; }
+  if (command.type === 'toggle-overlay-collapse' || command.type === 'send-screenshot' || command.type === 'delete-screenshot') {
+    if (overlay && !overlay.isDestroyed() && !overlay.webContents.isDestroyed()) overlay.webContents.send('overlay-command', command);
+    return;
+  }
+  forwardOverlayCommand(command);
+}
+
+function registerLiveShortcuts() {
+  if (registeredLiveShortcuts.length) return;
+  for (const item of LIVE_SHORTCUTS) {
+    try {
+      if (globalShortcut.register(item.accelerator, () => handleLiveShortcut(item.command))) registeredLiveShortcuts.push(item.accelerator);
+    } catch { /* A user or driver may already own one accelerator; the others remain available. */ }
+  }
+  const failed = LIVE_SHORTCUTS.filter(item => !registeredLiveShortcuts.includes(item.accelerator)).map(item => item.accelerator);
+  if (failed.length && overlay && !overlay.isDestroyed() && !overlay.webContents.isDestroyed()) {
+    overlay.webContents.send('overlay-data', { status: `有 ${failed.length} 个快捷键被其他程序占用，请查看设置中的快捷键列表` });
+  }
+}
+
+function unregisterLiveShortcuts() {
+  for (const accelerator of registeredLiveShortcuts) globalShortcut.unregister(accelerator);
+  registeredLiveShortcuts = [];
 }
 
 function transcriberRoot() {
@@ -682,7 +734,7 @@ else {
     if (!focusWindow(win)) { createWindow(); showMainWindow(); }
   });
   app.whenReady().then(() => { configureDisplayCapture(); loadVault(); loadWorkspace(); userSkillsRoot(); createTray(); createWindow(); createOverlay(); startLocalTranscriber(); });
-  app.on('before-quit', () => { isQuitting = true; stopLocalTranscriber(); if (tray && !tray.isDestroyed()) { tray.destroy(); tray = null; } });
+  app.on('before-quit', () => { isQuitting = true; unregisterLiveShortcuts(); stopLocalTranscriber(); if (tray && !tray.isDestroyed()) { tray.destroy(); tray = null; } });
   app.on('window-all-closed', () => { /* Windows stays in the tray until the user chooses the explicit exit action. */ });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }

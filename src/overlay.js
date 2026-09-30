@@ -28,7 +28,7 @@ function loadDisplaySettings() {
 
 function loadPositionSetting() {
   const value = ['top', 'right', 'bottom', 'left'].includes(localStorage.overlayPosition) ? localStorage.overlayPosition : 'top';
-  applyPositionSetting(value, false);
+  applyPositionSetting(value, true);
 }
 
 function applySystemAudioMode(value, notify = false) {
@@ -132,6 +132,8 @@ function renderAnswerHistory(items = [], fallback = null) {
 
 window.liveAgent.onOverlayData(data => {
   if (data.status) $('status').textContent = data.status;
+  if (data.overlayPosition) applyPositionSetting(data.overlayPosition, false);
+  if (typeof data.screenshotDraft === 'string') setScreenshotDraft(data.screenshotDraft);
   if (Array.isArray(data.liveEntries)) renderTranscriptHistory(data.liveEntries);
   if (Array.isArray(data.liveAnswers)) renderAnswerHistory(data.liveAnswers, data);
   else if (data.question || data.answer) renderAnswerHistory([], data);
@@ -185,12 +187,13 @@ function submitOverlayQuestion() {
   clearScreenshotDraft(false);
 }
 
-$('collapse').onclick = () => {
+function toggleCollapsed() {
   collapsed = !collapsed;
   document.body.classList.toggle('collapsed', collapsed);
   updateToggle($('collapse'), collapsed, collapsed ? '展开' : '收起');
   void window.liveAgent.setOverlayCollapsed(collapsed);
-};
+}
+$('collapse').onclick = toggleCollapsed;
 $('close').onclick = () => { clearScreenshotDraft(); return window.liveAgent.closeOverlay(); };
 $('quit').onclick = () => window.liveAgent.quitApp();
 $('ask').onclick = submitOverlayQuestion;
@@ -212,6 +215,11 @@ $('deleteScreenshot').onclick = () => clearScreenshotDraft();
 $('sendScreenshot').onclick = submitOverlayQuestion;
 $('systemAudio').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-system-audio' });
 $('microphone').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-microphone' });
+window.liveAgent.onOverlayCommand(command => {
+  if (command?.type === 'toggle-overlay-collapse') toggleCollapsed();
+  if (command?.type === 'send-screenshot') submitOverlayQuestion();
+  if (command?.type === 'delete-screenshot') clearScreenshotDraft();
+});
 $('systemAudioModePicker').addEventListener('click', event => {
   const option = event.target.closest('.mode-option');
   if (!option) return;
