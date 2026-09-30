@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, safeStorage, session, dialog, shell, desktopCapturer, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, safeStorage, session, dialog, shell, desktopCapturer, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -20,6 +20,8 @@ const {
 
 let win;
 let overlay;
+let tray;
+let isQuitting = false;
 let vaultPath;
 let liveMode = false;
 let vault = { version: 1, files: [], memories: [], conversations: [] };
@@ -41,6 +43,40 @@ function builtinSkillsRoot() {
 
 function userSkillsRoot() {
   return ensureUserSkillsRoot(path.join(app.getPath('userData'), 'skills'));
+}
+
+function trayIconPath() {
+  const packaged = path.join(process.resourcesPath, 'live-agent-icon.ico');
+  const development = path.join(__dirname, '..', 'build', 'icon.ico');
+  return app.isPackaged && fs.existsSync(packaged) ? packaged : development;
+}
+
+function showMainWindow() {
+  if (!win || win.isDestroyed()) return false;
+  if (liveMode && overlay && !overlay.isDestroyed()) return focusWindow(overlay);
+  try {
+    win.setSkipTaskbar(false);
+    win.show();
+    win.focus();
+    return true;
+  } catch { return false; }
+}
+
+function createTray() {
+  if (tray && !tray.isDestroyed()) return tray;
+  const iconPath = trayIconPath();
+  const image = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+  tray = new Tray(image);
+  tray.setToolTip('直播智答 · 本地个人 Agent');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示主界面', click: () => showMainWindow() },
+    { label: '打开提词面板', click: () => { createOverlay(); enforceContentProtection(overlay, true); focusWindow(overlay); } },
+    { type: 'separator' },
+    { label: '退出软件并结束全部进程', click: () => requestQuit() }
+  ]));
+  tray.on('click', () => { if (liveMode && focusWindow(overlay)) return; showMainWindow(); });
+  tray.on('double-click', () => showMainWindow());
+  return tray;
 }
 
 async function displaySources() {
@@ -155,7 +191,10 @@ function setOverlayPosition(position = 'top') {
 function notifyLiveEnded() { if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) win.webContents.send('overlay-command', { type: 'live-ended' }); }
 function focusWindow(target) {
   if (!target || target.isDestroyed()) return false;
-  try { if (target.isMinimized()) target.restore(); target.show(); target.focus(); return true; } catch { return false; }
+  try {
+    if (target === win && !liveMode) target.setSkipTaskbar(false);
+    if (target.isMinimized()) target.restore(); target.show(); target.focus(); return true;
+  } catch { return false; }
 }
 
 function transcriberRoot() {
@@ -306,6 +345,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1120, height: 760, minWidth: 880, minHeight: 620,
     backgroundColor: '#10151c',
+    icon: trayIconPath(),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
   enforceContentProtection(win, true);
@@ -314,6 +354,12 @@ function createWindow() {
     callback(['media', 'microphone'].includes(permission));
   });
   win.webContents.session.setPermissionCheckHandler((_wc, permission) => ['media', 'microphone'].includes(permission));
+  win.on('close', event => {
+    if (isQuitting || process.platform === 'darwin') return;
+    event.preventDefault();
+    win.hide();
+    win.setSkipTaskbar(true);
+  });
   win.on('closed', () => { win = null; });
   return win;
 }
@@ -343,7 +389,13 @@ ipcMain.handle('protect-window', (_event, enabled) => {
   enforceContentProtection(overlay, true);
   return Boolean(enabled);
 });
-ipcMain.handle('quit-app', () => { app.quit(); return true; });
+function requestQuit() {
+  if (isQuitting) return true;
+  isQuitting = true;
+  app.quit();
+  return true;
+}
+ipcMain.handle('quit-app', () => requestQuit());
 ipcMain.handle('set-live-mode', (_event, enabled) => setLiveMode(enabled));
 ipcMain.handle('env-openai-available', () => Boolean(process.env.OPENAI_API_KEY));
 ipcMain.handle('local-transcriber-status', () => ({
@@ -584,10 +636,10 @@ if (!hasAppLock) app.quit();
 else {
   app.on('second-instance', () => {
     if (liveMode && focusWindow(overlay)) return;
-    if (!focusWindow(win)) createWindow();
+    if (!focusWindow(win)) { createWindow(); showMainWindow(); }
   });
-  app.whenReady().then(() => { configureDisplayCapture(); loadVault(); loadWorkspace(); userSkillsRoot(); createWindow(); createOverlay(); startLocalTranscriber(); });
-  app.on('before-quit', () => stopLocalTranscriber());
-  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  app.whenReady().then(() => { configureDisplayCapture(); loadVault(); loadWorkspace(); userSkillsRoot(); createTray(); createWindow(); createOverlay(); startLocalTranscriber(); });
+  app.on('before-quit', () => { isQuitting = true; stopLocalTranscriber(); if (tray && !tray.isDestroyed()) { tray.destroy(); tray = null; } });
+  app.on('window-all-closed', () => { /* Windows stays in the tray until the user chooses the explicit exit action. */ });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }

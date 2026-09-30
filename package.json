@@ -39,6 +39,10 @@
         "from": "transcriber",
         "to": "transcriber",
         "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
+      },
+      {
+        "from": "build/icon.ico",
+        "to": "live-agent-icon.ico"
       }
     ],
     "win": {
