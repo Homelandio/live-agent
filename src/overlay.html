@@ -43,8 +43,13 @@
         <div id="answerHistory" class="history-scroll" role="log"></div>
       </section>
     </div>
+    <section id="screenshotDraft" class="screenshot-draft" hidden aria-live="polite">
+      <div class="draft-heading"><strong>截图提问草稿</strong><span>已自动截取当前主屏幕</span></div>
+      <img id="screenshotPreview" alt="当前屏幕截图预览">
+      <div class="draft-actions"><button id="deleteScreenshot" type="button">删除截图</button><button id="sendScreenshot" type="button" class="is-active">发送截图</button></div>
+    </section>
     <div class="quick"><input id="overlayInput" placeholder="直接输入问题并发送"><button id="ask">发送</button></div>
-    <footer><button id="screenshot">截图提问</button><button id="microphone" aria-pressed="false">麦克风：关</button><button id="systemAudio" aria-pressed="false">系统声音：关</button><button id="clear">清空</button><button id="auto" aria-pressed="true">自动回答：开</button></footer>
+    <footer><button id="screenshot">截图提问</button><button id="microphone" aria-pressed="false">麦克风：关</button><button id="systemAudio" aria-pressed="false">系统声音：开始录题</button><button id="clear">清空</button><button id="auto" aria-pressed="true">自动回答：开</button></footer>
   </main>
   <script src="overlay.js"></script>
 </body>

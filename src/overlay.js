@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 let collapsed = false;
 let autoAnswer = true;
+let screenshotDraft = '';
 const POSITION_LABELS = { top: '屏幕上方', right: '屏幕右侧', bottom: '屏幕下方', left: '屏幕左侧' };
 
 function applyDisplaySettings() {
@@ -124,8 +125,8 @@ window.liveAgent.onOverlayData(data => {
   }
   if (data.micPending) updateToggle($('microphone'), true, '麦克风：准备中');
   else if (typeof data.micActive === 'boolean') updateToggle($('microphone'), data.micActive, data.micActive ? '麦克风：开' : '麦克风：关');
-  if (data.systemAudioPending) updateToggle($('systemAudio'), true, '系统声音：准备中');
-  else if (typeof data.systemAudioActive === 'boolean') updateToggle($('systemAudio'), data.systemAudioActive, data.systemAudioActive ? '系统声音：开' : '系统声音：关');
+  if (data.systemAudioPending) updateToggle($('systemAudio'), true, '系统声音：整理中');
+  else if (typeof data.systemAudioActive === 'boolean') updateToggle($('systemAudio'), data.systemAudioActive, data.systemAudioActive ? '系统声音：录题中' : '系统声音：开始录题');
 });
 
 function updateToggle(button, active, label) {
@@ -134,12 +135,56 @@ function updateToggle(button, active, label) {
   if (label) button.textContent = label;
 }
 
+function setScreenshotDraft(data) {
+  screenshotDraft = String(data || '');
+  const draft = $('screenshotDraft');
+  const preview = $('screenshotPreview');
+  draft.hidden = !screenshotDraft;
+  preview.src = screenshotDraft;
+  $('screenshot').textContent = screenshotDraft ? '重新截图' : '截图提问';
+  if (screenshotDraft) $('status').textContent = '截图已放入草稿，可删除或发送';
+}
+
+function clearScreenshotDraft(notify = true) {
+  screenshotDraft = '';
+  $('screenshotDraft').hidden = true;
+  $('screenshotPreview').removeAttribute('src');
+  $('screenshot').textContent = '截图提问';
+  if (notify) window.liveAgent.sendOverlayCommand({ type: 'clear-screenshot' });
+}
+
+function submitOverlayQuestion() {
+  const text = $('overlayInput').value.trim();
+  if (!text && !screenshotDraft) return;
+  window.liveAgent.sendOverlayCommand({
+    type: 'ask',
+    text: text || '请根据这张截图识别当前问题并给出合适回答。',
+    image: screenshotDraft || null
+  });
+  $('overlayInput').value = '';
+  clearScreenshotDraft(false);
+}
+
 $('collapse').onclick = () => { collapsed = !collapsed; document.body.classList.toggle('collapsed', collapsed); updateToggle($('collapse'), collapsed, collapsed ? '展开' : '收起'); };
 $('close').onclick = () => window.liveAgent.closeOverlay();
 $('quit').onclick = () => window.liveAgent.quitApp();
-$('ask').onclick = () => { const text = $('overlayInput').value.trim(); if (text) { window.liveAgent.sendOverlayCommand({ type: 'ask', text }); $('overlayInput').value = ''; } };
+$('ask').onclick = submitOverlayQuestion;
 $('overlayInput').addEventListener('keydown', event => { if (event.key === 'Enter') $('ask').click(); });
-$('screenshot').onclick = async () => { const file = await window.liveAgent.chooseImage(); if (file) { const data = await window.liveAgent.readImageData(file); window.liveAgent.sendOverlayCommand({ type: 'screenshot', data }); $('status').textContent = '已选择截图，请输入问题后发送'; } };
+$('screenshot').onclick = async () => {
+  const button = $('screenshot');
+  button.disabled = true;
+  try {
+    const data = await window.liveAgent.captureScreenImage();
+    setScreenshotDraft(data);
+    window.liveAgent.sendOverlayCommand({ type: 'screenshot', data });
+  } catch (error) {
+    $('status').textContent = '截图失败：' + error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
+$('deleteScreenshot').onclick = () => clearScreenshotDraft();
+$('sendScreenshot').onclick = submitOverlayQuestion;
 $('systemAudio').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-system-audio' });
 $('microphone').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-microphone' });
 $('clear').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'clear' });

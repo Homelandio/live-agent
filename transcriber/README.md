@@ -9,3 +9,17 @@ The desktop app talks to a transcription provider through a small local HTTP con
 `provider.json` describes the bundled provider. It can be replaced by a compatible local model without changing the renderer. A user-only override may be placed at the application data path as `transcriber-provider.json`; it is intentionally outside the Git repository and may use an external `http` provider. External credentials must be supplied through the configured environment variable (`apiKeyEnv`), never committed to the manifest.
 
 The default implementation uses FunASR Paraformer. FunASR and the Paraformer model are third-party components; see `THIRD_PARTY_NOTICES.md` and the upstream license. This repository contains the adapter and launch contract, not the downloaded runtime or model weights. A future provider can be an external ASR API or another local model as long as it implements the same contract.
+
+## Accuracy roadmap
+
+The current bundled model is the FunASR Paraformer Chinese streaming model. The renderer now sends one manually delimited system-audio interval instead of fixed five-second fragments, keeps the raw transcript, and lets the answer model repair likely homophones or missing punctuation without overwriting the raw text.
+
+Candidate providers checked for future experiments:
+
+- [FunASR](https://github.com/modelscope/FunASR) (MIT): keep the current adapter, and optionally add `fsmn-vad` plus `ct-punc-c` when their model assets are bundled. This is the lowest-risk Chinese upgrade path, but it needs additional model weights.
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0): strong offline/streaming packaging, VAD, hotwords and multiple runtime targets. It is a good long-term embedded provider, but requires a new ONNX model bundle and adapter.
+- [SenseVoice](https://github.com/QwenAudio/SenseVoice) (MIT): Chinese, Cantonese, English, Japanese and Korean recognition with language/event signals. It is useful for noisy conversational audio, but should be benchmarked on the user's actual system-audio samples before replacing Paraformer.
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT) with [Silero VAD](https://github.com/snakers4/silero-vad) (MIT): a high-quality fallback for finalized intervals. It generally costs more CPU/RAM and latency than the bundled model, so it is not the default live provider.
+- [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT): a compact C/C++ fallback with CPU-friendly quantized models, but Chinese accuracy and latency depend heavily on the selected model.
+
+Projects marketed as interview copilots were reviewed only for workflow ideas. They commonly combine rolling audio buffers and floating prompts, but they do not improve recognition quality by themselves and are not bundled as code. New providers should implement `/health` and `/transcribe` rather than changing the renderer.

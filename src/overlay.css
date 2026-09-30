@@ -75,6 +75,13 @@ main { height: calc(100vh - 45px); overflow: hidden; padding: 12px; display: fle
 .sources { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .sources a { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); text-decoration: none; font-size: 9px; }
 .sources a:hover { color: rgba(255, 255, 255, var(--overlay-text-alpha)); border-color: var(--accent); }
+.screenshot-draft { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; padding: 7px 8px; border: 1px solid rgba(226, 178, 99, .42); border-radius: 7px; background: rgba(20, 27, 32, .42); }
+.screenshot-draft[hidden] { display: none; }
+.draft-heading { min-width: 0; display: flex; align-items: center; gap: 7px; color: rgba(244, 247, 250, .82); font-size: 10px; }
+.draft-heading span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.screenshot-draft img { grid-column: 1 / -1; display: block; width: 100%; max-height: 108px; object-fit: contain; object-position: center; border: 1px solid rgba(205, 214, 224, .20); border-radius: 4px; background: rgba(3, 8, 12, .38); }
+.draft-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 5px; }
+.draft-actions button { margin-left: 0; }
 .quick { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
 .quick input { width: 100%; margin: 0; border: 1px solid var(--line); border-radius: 5px; background: rgba(3, 8, 12, .28); color: rgba(255, 255, 255, var(--overlay-text-alpha)); padding: 8px; font: inherit; font-size: 11px; outline: none; }
 footer { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 0; }

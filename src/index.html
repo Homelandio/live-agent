@@ -19,11 +19,11 @@
       <label>API Key<input id="key" type="password" placeholder="仅保存在本机加密存储"></label>
       <div class="row"><button id="save">保存配置</button><button id="test">测试连接</button><button id="autoConnect" class="secondary">自动连接</button></div><p id="connectionDiagnosis" class="hint">等待连接诊断。API 地址必须是接口地址，不是密钥管理网页。</p>
       <h2>直播输入</h2>
-      <div class="row"><button id="start" class="secondary toggle-button" data-idle-label="麦克风：关" aria-pressed="false">麦克风：关</button><button id="systemAudio" class="secondary toggle-button" data-idle-label="系统声音：关" aria-pressed="false">系统声音：关</button><button id="stop" class="muted">停止全部</button></div>
+      <div class="row"><button id="start" class="secondary toggle-button" data-idle-label="麦克风：关" aria-pressed="false">麦克风：关</button><button id="systemAudio" class="secondary toggle-button" data-idle-label="系统声音：开始录题" aria-pressed="false">系统声音：开始录题</button><button id="stop" class="muted">停止全部</button></div>
       <label class="check"><input id="autoAnswer" type="checkbox" checked> 转写完成后自动生成回答</label>
       <label class="check"><input id="protect" type="checkbox" checked> 主窗口内容保护（悬浮窗始终保护）</label>
       <button id="overlay" class="secondary">打开提词面板</button>
-      <p id="audioStatus" class="hint">系统声音会在进入直播模式后自动启动，也可以单独开启。选择共享窗口或屏幕时请勾选“共享音频”。</p>
+      <p id="audioStatus" class="hint">系统声音采用人工区间录题：点击开始，完整播放问题后再次点击结束，再统一转写和回答。首次使用请选择共享窗口或屏幕并勾选“共享音频”。</p>
       <label class="audio-source-label">系统声音来源<select id="audioSource"><option value="">正在读取屏幕和窗口...</option></select></label>
       <h2>语音识别服务</h2>
       <div class="local-engine"><div><span class="engine-label">本地引擎</span><strong>FunASR Paraformer</strong></div><span class="engine-badge">中文 · 本机</span></div>
@@ -36,7 +36,7 @@
       <div class="workspace-access"><div class="row"><button id="workspaceAdd" type="button">添加文件夹</button><button id="workspaceRefresh" type="button" class="secondary">刷新</button></div><p id="workspaceStatus" class="hint">正在读取本机工作区配置。已有目录无需重复添加。</p><div id="workspaceList" class="workspace-list"></div><p id="workspaceContextStatus" class="hint">本轮尚未检索工作区。</p></div>
       <h2>个人知识库</h2>
       <textarea id="knowledge" placeholder="临时补充本次对话的背景资料..."></textarea>
-      <div class="row"><button id="clear">清空临时内容</button><button id="clearVault" class="secondary">清空知识库</button><button id="exportVault" class="secondary">导出备份</button><button id="restoreVault" class="secondary">恢复备份</button><button id="shot" class="secondary">发送截图提问</button></div>
+      <div class="row"><button id="clear">清空临时内容</button><button id="clearVault" class="secondary">清空知识库</button><button id="exportVault" class="secondary">导出备份</button><button id="restoreVault" class="secondary">恢复备份</button><button id="shot" class="secondary">截取当前屏幕提问</button></div>
       <div class="vault-toolbar"><strong>已导入资料</strong><span id="fileSummary">0 个文件</span></div><div id="fileList" class="file-list"></div>
       <div class="vault-toolbar"><strong>长期记忆</strong><span id="memorySummary">0 条</span></div><div id="memoryList" class="memory-list"></div>
     </section>

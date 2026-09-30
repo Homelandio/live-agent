@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('liveAgent', {
   quitApp: () => ipcRenderer.invoke('quit-app'),
   chooseImage: () => ipcRenderer.invoke('choose-image'),
   readImageData: filePath => ipcRenderer.invoke('read-image-data', filePath),
+  captureScreenImage: () => ipcRenderer.invoke('capture-screen-image'),
   chooseFiles: () => ipcRenderer.invoke('choose-files'),
   readTextFile: filePath => ipcRenderer.invoke('read-text-file', filePath),
   openOverlay: () => ipcRenderer.invoke('open-overlay'),

@@ -87,6 +87,36 @@ async function displaySources() {
   });
 }
 
+async function capturePrimaryScreenImage() {
+  const display = screen.getPrimaryDisplay();
+  const displayWidth = Math.max(1, Math.round(display.size.width * display.scaleFactor));
+  const displayHeight = Math.max(1, Math.round(display.size.height * display.scaleFactor));
+  const longestSide = Math.max(displayWidth, displayHeight);
+  const thumbnailScale = Math.min(1, 7680 / longestSide);
+  const thumbnailSize = {
+    width: Math.max(1, Math.round(displayWidth * thumbnailScale)),
+    height: Math.max(1, Math.round(displayHeight * thumbnailScale))
+  };
+  // Hide the protected overlay for the capture window as an extra guarantee;
+  // this also handles capture paths that ignore WDA_EXCLUDEFROMCAPTURE.
+  const restoreOverlay = overlay && !overlay.isDestroyed() && overlay.isVisible();
+  if (restoreOverlay) overlay.hide();
+  await new Promise(resolve => setTimeout(resolve, 60));
+  enforceContentProtection(overlay, true);
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize, fetchWindowIcons: false });
+    const source = sources.find(item => String(item.display_id || '') === String(display.id)) || sources[0];
+    if (!source?.thumbnail || source.thumbnail.isEmpty()) throw new Error('无法读取当前屏幕画面');
+    return source.thumbnail.toDataURL();
+  } finally {
+    if (restoreOverlay && overlay && !overlay.isDestroyed()) {
+      enforceContentProtection(overlay, true);
+      overlay.show();
+      overlay.focus();
+    }
+  }
+}
+
 function configureDisplayCapture() {
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     displaySources().then(sources => {
@@ -454,6 +484,7 @@ ipcMain.handle('choose-image', async () => {
   const result = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
   return result.canceled ? null : result.filePaths[0];
 });
+ipcMain.handle('capture-screen-image', async () => capturePrimaryScreenImage());
 ipcMain.handle('read-image-data', async (_event, filePath) => {
   const ext = path.extname(filePath).toLowerCase();
   const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
