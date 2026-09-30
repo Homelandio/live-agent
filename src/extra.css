@@ -73,6 +73,7 @@ button:focus-visible,input:focus,textarea:focus,.settings-panel select:focus{bor
 .skill-chip.active{border-color:oklch(.60 .09 78);color:var(--ink);background:oklch(.25 .035 78)}
 .skill-panel button{width:100%}
 .workspace-access{padding:10px 11px;border:1px solid var(--line);border-radius:6px;background:oklch(.145 .01 250)}
+.section-note{margin-left:6px;color:var(--primary);font-size:10px;font-weight:500}
 .workspace-access .row{flex-wrap:wrap}
 .workspace-access .hint{margin:8px 0 0}
 .workspace-list{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:120px;overflow:auto}

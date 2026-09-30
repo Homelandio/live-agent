@@ -812,7 +812,7 @@ async function answerChat(question) {
 
 function updateFileCount() {
   $('fileCount').textContent = files.length;
-  $('contextPill').textContent = files.length + ' 个文件 · ' + memories.length + ' 条记忆';
+  $('contextPill').textContent = files.length + ' 个文件 · ' + memories.length + ' 条记忆 · ' + (workspaceRoots.length ? `${workspaceRoots.length} 个工作区` : '工作区未配置');
   $('fileSummary').textContent = files.length + ' 个文件';
   $('memorySummary').textContent = memories.length + ' 条';
 }
@@ -1036,7 +1036,7 @@ function renderWorkspace() {
   if (!list || !status) return;
   list.replaceChildren();
   status.textContent = workspaceRoots.length
-    ? `${workspaceRoots.length} 个授权目录，发现 ${workspaceFiles.length} 个可检索文件${workspaceFiles.length >= 600 ? '（已达到扫描上限）' : ''}`
+    ? `已加载 ${workspaceRoots.length} 个授权目录，发现 ${workspaceFiles.length} 个可检索文件${workspaceFiles.length >= 600 ? '（已达到扫描上限）' : ''}；已有目录无需重复添加`
     : '未授权工作区。添加后，Agent 会在回答前检索其中的文本资料。';
   if (!workspaceRoots.length) {
     list.innerHTML = '<div class="empty-list">尚未添加工作区目录</div>';
@@ -1057,6 +1057,7 @@ async function refreshWorkspace() {
     const state = await window.liveAgent.workspaceState();
     workspaceRoots = state.roots || [];
     workspaceFiles = state.files || [];
+    updateFileCount();
     renderWorkspace();
   } catch (error) {
     if ($('workspaceStatus')) $('workspaceStatus').textContent = `工作区加载失败：${error.message}`;

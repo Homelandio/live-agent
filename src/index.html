@@ -32,8 +32,8 @@
       <div class="skill-panel"><div id="skillStatus" class="hint">正在加载技能...</div><div id="skillList" class="skill-list"></div><button id="openSkills" type="button" class="secondary">打开用户技能目录</button></div>
       <label class="check"><input id="webSearchEnabled" type="checkbox" checked> 知识库无匹配时检索网络</label>
       <p id="webSearchStatus" class="hint">仅把当前问题发送到公开检索服务，个人记忆不会发送给搜索引擎。</p>
-      <h2>授权工作区</h2>
-      <div class="workspace-access"><div class="row"><button id="workspaceAdd" type="button">添加文件夹</button><button id="workspaceRefresh" type="button" class="secondary">刷新</button></div><p id="workspaceStatus" class="hint">未授权工作区。添加后，Agent 会在回答前检索其中的文本资料。</p><div id="workspaceList" class="workspace-list"></div><p id="workspaceContextStatus" class="hint">本轮尚未检索工作区。</p></div>
+      <h2>授权工作区 <span class="section-note">已加载本机配置</span></h2>
+      <div class="workspace-access"><div class="row"><button id="workspaceAdd" type="button">添加文件夹</button><button id="workspaceRefresh" type="button" class="secondary">刷新</button></div><p id="workspaceStatus" class="hint">正在读取本机工作区配置。已有目录无需重复添加。</p><div id="workspaceList" class="workspace-list"></div><p id="workspaceContextStatus" class="hint">本轮尚未检索工作区。</p></div>
       <h2>个人知识库</h2>
       <textarea id="knowledge" placeholder="临时补充本次对话的背景资料..."></textarea>
       <div class="row"><button id="clear">清空临时内容</button><button id="clearVault" class="secondary">清空知识库</button><button id="exportVault" class="secondary">导出备份</button><button id="restoreVault" class="secondary">恢复备份</button><button id="shot" class="secondary">发送截图提问</button></div>
@@ -42,7 +42,7 @@
     </section>
     <section class="workspace">
       <div class="chat-shell">
-        <div class="chat-top"><div><div class="eyebrow">对话工作台</div><h1>和你的知识库一起工作</h1></div><span class="context-pill" id="contextPill">0 个文件</span></div>
+        <div class="chat-top"><div><div class="eyebrow">对话工作台</div><h1>和你的知识库一起工作</h1></div><span class="context-pill" id="contextPill">0 个文件 · 工作区未配置</span></div>
         <div id="chatMessages" class="chat-messages"><div class="welcome"><div class="welcome-mark">⌁</div><h2>从一个问题开始</h2><p>上传资料，建立本地上下文，然后直接提问。直播模式会复用当前知识库。</p></div></div>
         <div class="composer"><textarea id="chatInput" rows="2" placeholder="输入问题，或描述你想处理的内容..."></textarea><div class="composer-bar"><button id="upload" class="secondary">上传文件</button><span class="composer-hint">Enter 发送，Shift + Enter 换行</span><button id="send">发送</button></div></div>
       </div>
