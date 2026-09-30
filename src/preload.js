@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('liveAgent', {
   readTextFile: filePath => ipcRenderer.invoke('read-text-file', filePath),
   openOverlay: () => ipcRenderer.invoke('open-overlay'),
   closeOverlay: () => ipcRenderer.invoke('close-overlay'),
+  setOverlayCollapsed: collapsed => ipcRenderer.invoke('set-overlay-collapsed', Boolean(collapsed)),
   setOverlayPosition: position => ipcRenderer.invoke('set-overlay-position', position),
   updateOverlay: payload => ipcRenderer.invoke('update-overlay', payload),
   sendOverlayCommand: command => ipcRenderer.invoke('overlay-command', command),

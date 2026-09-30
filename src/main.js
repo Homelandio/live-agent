@@ -36,6 +36,8 @@ let workspacePath;
 let workspaceRoots = [];
 const workspaceCache = new Map();
 const OVERLAY_POSITION_MARGIN = 18;
+const OVERLAY_EXPANDED_SIZE = { width: 520, height: 470 };
+const OVERLAY_COLLAPSED_SIZE = { width: 260, height: 45 };
 
 function builtinSkillsRoot() {
   return path.join(__dirname, 'skills');
@@ -493,6 +495,16 @@ ipcMain.handle('read-image-data', async (_event, filePath) => {
 ipcMain.handle('open-overlay', () => { createOverlay(); enforceContentProtection(overlay, true); focusWindow(overlay); return true; });
 ipcMain.handle('set-overlay-position', (_event, position) => { enforceContentProtection(overlay, true); return setOverlayPosition(position); });
 ipcMain.handle('close-overlay', () => { if (liveMode) { setLiveMode(false); notifyLiveEnded(); } if (overlay && !overlay.isDestroyed()) overlay.hide(); return true; });
+ipcMain.handle('set-overlay-collapsed', (_event, collapsed) => {
+  if (!overlay || overlay.isDestroyed()) return false;
+  const compact = Boolean(collapsed);
+  const size = compact ? OVERLAY_COLLAPSED_SIZE : OVERLAY_EXPANDED_SIZE;
+  overlay.setMinimumSize(compact ? [220, 45] : [360, 240]);
+  overlay.setSize(size.width, size.height, false);
+  enforceContentProtection(overlay, true);
+  setOverlayPosition(overlayPosition);
+  return true;
+});
 ipcMain.handle('update-overlay', (_event, payload) => { if (overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay-data', payload); return true; });
 ipcMain.handle('overlay-command', (_event, command) => { if (win && !win.isDestroyed()) win.webContents.send('overlay-command', command); return true; });
 ipcMain.handle('open-external', async (_event, target) => {

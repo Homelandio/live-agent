@@ -185,7 +185,12 @@ function submitOverlayQuestion() {
   clearScreenshotDraft(false);
 }
 
-$('collapse').onclick = () => { collapsed = !collapsed; document.body.classList.toggle('collapsed', collapsed); updateToggle($('collapse'), collapsed, collapsed ? '展开' : '收起'); };
+$('collapse').onclick = () => {
+  collapsed = !collapsed;
+  document.body.classList.toggle('collapsed', collapsed);
+  updateToggle($('collapse'), collapsed, collapsed ? '展开' : '收起');
+  void window.liveAgent.setOverlayCollapsed(collapsed);
+};
 $('close').onclick = () => { clearScreenshotDraft(); return window.liveAgent.closeOverlay(); };
 $('quit').onclick = () => window.liveAgent.quitApp();
 $('ask').onclick = submitOverlayQuestion;
