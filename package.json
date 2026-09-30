@@ -10,7 +10,8 @@
     "test:audio": "node scripts/test-audio-segmentation.js",
     "test:vault": "node scripts/test-vault-persistence.js",
     "test:transcriber": "node scripts/test-transcriber-provider.js",
-    "audit:public": "node scripts/audit-public.js"
+    "audit:public": "node scripts/audit-public.js",
+    "create:icon": "node scripts/create-icon.js"
   },
   "devDependencies": {
     "electron": "^32.2.0",
@@ -39,6 +40,7 @@
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",

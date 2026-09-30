@@ -15,7 +15,7 @@
       <div class="panel-heading"><div><div class="eyebrow">连接</div><h2>模型设置</h2></div><span class="panel-kicker">本地保存</span></div>
       <label>连接方式<select id="provider"><option value="custom">自定义 OpenAI 兼容接口</option><option value="openai">OpenAI 官方 API</option><option value="env-openai">环境变量自动连接 OpenAI</option><option value="ollama">本机 Ollama</option><option value="auto">自动检测</option></select></label>
       <label>API 地址<input id="endpoint" value="https://api.openai.com/v1/chat/completions"></label>
-      <label>模型<div class="model-row"><input id="model" list="modelList" placeholder="手动输入或点击“获取模型”"><datalist id="modelList"></datalist><button id="models" type="button" class="secondary">获取模型</button></div></label>
+      <label>模型<div class="model-row"><select id="model"><option value="">请先点击“获取模型”</option></select><button id="models" type="button" class="secondary">获取模型</button></div></label>
       <label>API Key<input id="key" type="password" placeholder="仅保存在本机加密存储"></label>
       <div class="row"><button id="save">保存配置</button><button id="test">测试连接</button><button id="autoConnect" class="secondary">自动连接</button></div><p id="connectionDiagnosis" class="hint">等待连接诊断。API 地址必须是接口地址，不是密钥管理网页。</p>
       <h2>直播输入</h2>

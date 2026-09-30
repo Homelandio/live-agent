@@ -867,9 +867,19 @@ function loadConversation(id) {
   setState('已恢复历史对话');
 }
 
-function setModelOptions(models) {
-  const list = $('modelList');
-  list.replaceChildren(...models.map(id => { const option = document.createElement('option'); option.value = id; return option; }));
+function setModelOptions(models, preferred = null) {
+  const select = $('model');
+  if (!select) return;
+  const current = preferred === null ? String(select.value || stored('model') || '') : String(preferred || '');
+  const values = [...new Set((models || []).map(String).filter(Boolean))];
+  if (current && !values.includes(current)) values.unshift(current);
+  select.replaceChildren();
+  if (!values.length) {
+    select.append(new Option('请先点击“获取模型”', ''));
+    return;
+  }
+  values.forEach(id => select.append(new Option(id, id)));
+  select.value = current && values.includes(current) ? current : values[0];
 }
 
 function modelIds(data) {
@@ -946,7 +956,7 @@ async function testConnection({ silent = false } = {}) {
   try {
     const result = await probeConnection(c);
     if (result.models.length) {
-      setModelOptions(result.models);
+      setModelOptions(result.models, '');
       store('modelList', JSON.stringify(result.models));
       if (!c.model || !result.models.includes(c.model)) { $('model').value = result.models[0]; c.model = result.models[0]; }
     }
@@ -981,7 +991,7 @@ async function autoConnect() {
         $('provider').value = candidate.provider;
         $('endpoint').value = candidate.endpoint;
         $('key').value = candidate.key || '';
-        if (result.models.length) { setModelOptions(result.models); $('model').value = result.models.includes(candidate.model) ? candidate.model : result.models[0]; store('modelList', JSON.stringify(result.models)); }
+        if (result.models.length) { setModelOptions(result.models, ''); $('model').value = result.models.includes(candidate.model) ? candidate.model : result.models[0]; store('modelList', JSON.stringify(result.models)); }
         await saveConfig(apiConfig());
         setDiagnosis(`自动连接成功：${candidate.provider === 'ollama' ? '本机 Ollama' : candidate.provider === 'env-openai' ? 'OPENAI_API_KEY 环境变量' : '已保存的兼容接口'}`, true);
         setState('连接正常', true);
@@ -1116,7 +1126,7 @@ $('models').onclick = async () => {
     const data = await response.json();
     const models = modelIds(data);
     if (!models.length) throw new Error('接口未返回可用模型');
-    setModelOptions(models); store('modelList', JSON.stringify(models));
+    setModelOptions(models, ''); store('modelList', JSON.stringify(models));
     if (!$('model').value) $('model').value = models[0];
     setDiagnosis(`已获取 ${models.length} 个模型`, true); setState(`已获取 ${models.length} 个模型`);
   } catch (error) { setDiagnosis('获取模型失败：' + connectionError(error)); setState('获取模型失败'); }
@@ -1126,9 +1136,10 @@ $('models').onclick = async () => {
 window.addEventListener('DOMContentLoaded', async () => {
   $('provider').value = stored('provider') || 'custom';
   $('endpoint').value = stored('endpoint') || $('endpoint').value;
-  $('model').value = stored('model') || '';
+  const savedModel = stored('model') || '';
   store('transcriberProvider', 'local-funasr');
   try { setModelOptions(JSON.parse(stored('modelList') || '[]')); } catch { setModelOptions([]); }
+  if (savedModel && [...$('model').options].some(option => option.value === savedModel)) $('model').value = savedModel;
   $('webSearchEnabled').checked = stored('webSearchEnabled') !== '0';
   loadDisplaySources();
   if (stored('key')) try { $('key').value = await window.liveAgent.secureUnstore(stored('key')); } catch {}
