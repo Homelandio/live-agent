@@ -477,16 +477,16 @@ ipcMain.handle('vault-restore', async () => {
   return { files: vault.files.length, memories: vault.memories.length, conversations: vault.conversations.length };
 });
 ipcMain.handle('vault-context', (_event, query) => {
-  const terms = searchTerms(query); const phrase = String(query || '').trim().toLowerCase(); const rows = [];
-  for (const f of vault.files) for (const c of f.chunks || []) {
-    const lower = c.content.toLowerCase();
-    const termScore = terms.reduce((n, t) => n + (lower.includes(t) ? 1 : 0), 0);
-    const phraseScore = phrase && lower.includes(phrase) ? 3 : 0;
-    const nameScore = terms.some(t => f.name.toLowerCase().includes(t)) ? 2 : 0;
-    rows.push({ source: f.name, fileId: f.id, index: c.index, score: termScore + phraseScore + nameScore, content: c.content });
-  }
+  const result = rankDocumentChunks(vault.files, String(query || '').slice(0, 800), 10);
+  const terms = searchTerms(query);
   const memoryHit = vault.memories.some(memory => terms.some(term => String(memory.text || '').toLowerCase().includes(term)));
-  rows.sort((a, b) => b.score - a.score || a.index - b.index); return { memories: vault.memories.slice(-20), chunks: rows.slice(0, 8), hasRelevant: rows.some(row => row.score > 0) || memoryHit };
+  return {
+    ...result,
+    memories: vault.memories.slice(-20),
+    hasRelevant: result.hasRelevant || memoryHit,
+    filesScanned: vault.files.length,
+    sources: [...new Set(result.chunks.map(chunk => chunk.source))]
+  };
 });
 ipcMain.handle('workspace-state', () => getWorkspaceState());
 ipcMain.handle('workspace-add-root', async () => {

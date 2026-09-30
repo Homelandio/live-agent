@@ -9,7 +9,9 @@ const BUILTIN_SKILLS = [
   { slug: 'core-grounding', name: '事实约束与隐私', description: '让回答优先依据用户资料，区分事实、推测和外部资料。', triggers: ['回答', '事实', '资料', '知识库', '隐私', 'grounding'], file: 'core-grounding/SKILL.md' },
   { slug: 'knowledge-retrieval', name: '知识库检索', description: '规划本地文件、长期记忆、会话记录和网络资料的检索顺序。', triggers: ['知识库', '检索', '文件', '记忆', '资料', 'rag', 'context'], file: 'knowledge-retrieval/SKILL.md' },
   { slug: 'live-answer', name: '直播问答', description: '处理系统声音与麦克风来源、语音歧义、短回答和会话连续性。', triggers: ['直播', '转写', '系统声音', '麦克风', '回答', 'live', 'speech'], file: 'live-answer/SKILL.md' },
-  { slug: 'workspace-safety', name: '本地工作区安全', description: '约束本地文件操作、路径、敏感数据和需要用户确认的动作。', triggers: ['文件', '本地', '工作区', '修改', '删除', '导入', 'workspace'], file: 'workspace-safety/SKILL.md' }
+  { slug: 'workspace-safety', name: '本地工作区安全', description: '约束本地文件操作、路径、敏感数据和需要用户确认的动作。', triggers: ['文件', '本地', '工作区', '修改', '删除', '导入', 'workspace'], file: 'workspace-safety/SKILL.md' },
+  { slug: 'interview-coach', name: '模拟面试教练', description: '根据真实简历、岗位要求和项目材料进行提问、追问、评分与面后复盘。', triggers: ['面试', '模拟', '追问', '复盘', '评分', '面试官', 'mock', 'interview'], file: 'interview-coach/SKILL.md' },
+  { slug: 'role-fit', name: '岗位匹配分析', description: '从岗位描述提取要求，将候选人的真实证据映射到岗位能力，并识别缺口。', triggers: ['岗位', '职位', 'JD', '简历', '匹配', '招聘', '技能', 'role', 'resume'], file: 'role-fit/SKILL.md' }
 ];
 
 function normalizeText(value, max = 240) {
@@ -100,7 +102,11 @@ function scoreSkill(skill, query, mode) {
   const text = `${query || ''} ${mode || ''}`.toLowerCase();
   let score = skill.origin === 'builtin' && skill.slug === 'core-grounding' ? 4 : 0;
   if (skill.origin === 'builtin' && skill.slug === 'live-answer' && mode === 'live') score += 8;
-  if (skill.origin === 'builtin' && skill.slug === 'knowledge-retrieval') score += 3;
+  if (skill.origin === 'builtin' && skill.slug === 'knowledge-retrieval') score += mode === 'live' ? 8 : 3;
+  if (skill.origin === 'builtin' && mode === 'live' && ['interview-coach', 'role-fit'].includes(skill.slug)) return -100;
+  if (skill.origin === 'builtin' && skill.slug === 'interview-coach' && (mode === 'interview' || mode === 'debrief')) score += 10;
+  if (skill.origin === 'builtin' && skill.slug === 'role-fit' && (mode === 'role-fit' || /interview|岗位|职位|简历|jd|resume|role/i.test(text))) score += 6;
+  for (const trigger of skill.triggers || []) if (text.includes(String(trigger).toLowerCase())) score += 3;
   for (const token of text.split(/[^a-z0-9\u4e00-\u9fff]+/i).filter(Boolean)) {
     if (token.length >= 2 && haystack.includes(token)) score += 2;
   }

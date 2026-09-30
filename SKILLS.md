@@ -6,6 +6,8 @@
 - `knowledge-retrieval`：本地知识库、长期记忆和网络检索顺序
 - `live-answer`：直播来源区分、语音歧义和独立回答
 - `workspace-safety`：本地文件操作和敏感数据保护
+- `interview-coach`：模拟面试、追问、评分和复盘
+- `role-fit`：岗位要求与真实证据的匹配分析
 
 内置技能随软件打包到 `src/skills/`，只读加载。每轮按问题和运行模式选择最相关的技能，最多四个。
 

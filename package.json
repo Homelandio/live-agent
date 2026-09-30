@@ -11,6 +11,7 @@
     "test:vault": "node scripts/test-vault-persistence.js",
     "test:transcriber": "node scripts/test-transcriber-provider.js",
     "test:workspace": "node scripts/test-workspace-tools.js",
+    "test:retrieval": "node scripts/test-retrieval.js",
     "audit:public": "node scripts/audit-public.js",
     "create:icon": "node scripts/create-icon.js"
   },
