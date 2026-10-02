@@ -6,7 +6,7 @@ const https = require('https');
 const { spawn, spawnSync } = require('child_process');
 const { buildSkillContext, ensureUserSkillsRoot, listSkillMetadata } = require('./agent-skills');
 const { loadVaultFile, saveVaultFile } = require('./vault-store');
-const { loadTranscriberProvider, resolveProviderCommand } = require('./transcriber-config');
+const { loadTranscriberProvider, loadTranscriberProviders, resolveProviderCommand } = require('./transcriber-config');
 const {
   isPathWithinRoot,
   listWorkspaceFiles,
@@ -31,6 +31,9 @@ let transcriberPort = 0;
 let transcriberReady = false;
 let transcriberError = '';
 let transcriberProvider;
+let transcriberProviders = [];
+let transcriberSelectionPath;
+let transcriberSelectionId = '';
 let pendingDisplaySourceId = '';
 let overlayPosition = 'top';
 let overlayDisplaySettings = { backgroundTransparency: 80, textTransparency: 40 };
@@ -456,23 +459,92 @@ function transcriberRoot() {
   return app.isPackaged ? path.join(process.resourcesPath, 'transcriber') : path.join(__dirname, '..', 'transcriber');
 }
 
-function startLocalTranscriber() {
+function readTranscriberSelection() {
+  transcriberSelectionPath ||= path.join(app.getPath('userData'), 'transcriber-selection.json');
+  try {
+    const parsed = JSON.parse(fs.readFileSync(transcriberSelectionPath, 'utf8'));
+    return String(parsed?.providerId || '').trim();
+  } catch { return ''; }
+}
+
+function writeTranscriberSelection(providerId) {
+  transcriberSelectionPath ||= path.join(app.getPath('userData'), 'transcriber-selection.json');
+  fs.mkdirSync(path.dirname(transcriberSelectionPath), { recursive: true });
+  fs.writeFileSync(transcriberSelectionPath, JSON.stringify({ version: 1, providerId }, null, 2), 'utf8');
+}
+
+function transcriberProviderAssets(provider, root = transcriberRoot()) {
+  return (provider?.assets || []).map(asset => path.resolve(root, String(asset)));
+}
+
+function transcriberProviderAvailable(provider, root = transcriberRoot()) {
+  if (provider?.type === 'http') return true;
+  if (!transcriberProviderAssets(provider, root).every(asset => fs.existsSync(asset))) return false;
+  if (provider?.command) return fs.existsSync(resolveProviderCommand(root, provider.command));
+  return true;
+}
+
+function transcriberProviderSnapshot() {
+  const root = transcriberRoot();
+  return transcriberProviders.map(provider => ({
+    id: provider.id,
+    name: provider.name,
+    type: provider.type,
+    runtime: provider.runtime,
+    available: provider.type === 'http' || transcriberProviderAvailable(provider, root),
+    selected: provider.id === transcriberProvider?.id,
+    license: provider.license || '',
+    repository: provider.repository || ''
+  }));
+}
+
+function transcriberStatusSnapshot() {
+  return {
+    available: transcriberReady,
+    port: transcriberPort,
+    error: transcriberError,
+    provider: transcriberProvider?.id || 'unknown',
+    model: transcriberProvider?.name || '未配置转录提供者',
+    license: transcriberProvider?.license || '',
+    repository: transcriberProvider?.repository || '',
+    providers: transcriberProviderSnapshot()
+  };
+}
+
+function transcriberLaunch(provider, root) {
+  if (provider.runtime === 'node' && provider.entry) return { command: resolveProviderCommand(root, provider.command), args: [provider.entry, ...provider.args], env: {} };
+  return { command: resolveProviderCommand(root, provider.command), args: provider.args, env: {} };
+}
+
+function startLocalTranscriber(selectedId = '') {
   const root = transcriberRoot();
   try {
-    transcriberProvider = loadTranscriberProvider(root, path.join(app.getPath('userData'), 'transcriber-provider.json'));
+    const overridePath = path.join(app.getPath('userData'), 'transcriber-provider.json');
+    transcriberProviders = loadTranscriberProviders(root, overridePath);
+    transcriberSelectionId = String(selectedId || transcriberSelectionId || readTranscriberSelection()).trim();
+    transcriberProvider = loadTranscriberProvider(root, overridePath, transcriberSelectionId);
+    transcriberSelectionId = transcriberProvider.id;
+    transcriberReady = false;
+    transcriberPort = 0;
+    transcriberError = '';
+    if (transcriberProvider.type === 'local-sidecar' && !transcriberProviderAvailable(transcriberProvider, root)) {
+      transcriberError = `${transcriberProvider.name} 的模型文件未安装到软件目录`;
+      return false;
+    }
     if (transcriberProvider.type === 'http') {
       transcriberPort = 0;
       transcriberReady = false;
       void probeExternalTranscriber(transcriberProvider);
       return true;
     }
-    const command = resolveProviderCommand(root, transcriberProvider.command);
+    const launch = transcriberLaunch(transcriberProvider, root);
+    const command = launch.command;
     if (!fs.existsSync(command)) {
       transcriberError = '本地转录组件尚未安装到软件目录';
       return false;
     }
-    transcriberProcess = spawn(command, transcriberProvider.args, {
-      cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
+    transcriberProcess = spawn(command, launch.args, {
+      cwd: root, env: { ...process.env, ...launch.env }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
     });
     transcriberProcess.stdout.setEncoding('utf8');
     transcriberProcess.stdout.on('data', chunk => {
@@ -493,9 +565,11 @@ async function probeExternalTranscriber(provider) {
   try {
     const result = await transcriberRequest(provider, provider.healthPath, { timeout: 12000 });
     if (result.status < 200 || result.status >= 300) throw new Error(`外接转录服务 HTTP ${result.status}`);
+    if (transcriberProvider?.id !== provider.id) return;
     transcriberReady = true;
     transcriberError = '';
   } catch (error) {
+    if (transcriberProvider?.id !== provider.id) return;
     transcriberReady = false;
     transcriberError = error.message;
   }
@@ -722,15 +796,20 @@ ipcMain.handle('live-shortcuts-reset', () => {
   return writeLiveShortcutConfig(values);
 });
 ipcMain.handle('env-openai-available', () => Boolean(process.env.OPENAI_API_KEY));
-ipcMain.handle('local-transcriber-status', () => ({
-  available: transcriberReady,
-  port: transcriberPort,
-  error: transcriberError,
-  provider: transcriberProvider?.id || 'unknown',
-  model: transcriberProvider?.name || '未配置转录提供者',
-  license: transcriberProvider?.license || '',
-  repository: transcriberProvider?.repository || ''
-}));
+ipcMain.handle('local-transcriber-status', () => transcriberStatusSnapshot());
+ipcMain.handle('local-transcriber-select', (_event, providerId) => {
+  const nextId = String(providerId || '').trim();
+  if (liveMode) throw new Error('直播模式进行中，请先结束直播再切换语音识别模型');
+  const target = transcriberProviders.find(provider => provider.id === nextId);
+  if (!target) throw new Error('未找到可用的语音识别模型');
+  if (target.type === 'local-sidecar' && !transcriberProviderAvailable(target)) throw new Error(`${target.name} 的模型文件尚未安装`);
+  if (target.id === transcriberProvider?.id && transcriberReady) return transcriberStatusSnapshot();
+  stopLocalTranscriber();
+  transcriberSelectionId = target.id;
+  writeTranscriberSelection(target.id);
+  startLocalTranscriber(target.id);
+  return transcriberStatusSnapshot();
+});
 ipcMain.handle('display-sources', async () => (await displaySources()).map(source => ({ id: source.id, name: source.name })));
 ipcMain.handle('set-display-source', (_event, sourceId) => { pendingDisplaySourceId = String(sourceId || ''); return true; });
 ipcMain.handle('local-transcribe', async (_event, payload = {}) => {

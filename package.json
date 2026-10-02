@@ -7,6 +7,7 @@
     "start": "electron .",
     "dev": "electron .",
     "dist": "electron-builder --win nsis",
+    "test": "npm run test:transcriber && npm run test:audio && npm run test:vault && npm run test:workspace && npm run test:retrieval && npm run audit:public",
     "test:audio": "node scripts/test-audio-segmentation.js",
     "test:vault": "node scripts/test-vault-persistence.js",
     "test:transcriber": "node scripts/test-transcriber-provider.js",
@@ -38,12 +39,28 @@
       {
         "from": "transcriber",
         "to": "transcriber",
-        "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc"
+        ]
       },
       {
         "from": "build/icon.ico",
         "to": "live-agent-icon.ico"
+      },
+      {
+        "from": "node_modules/sherpa-onnx-node",
+        "to": "transcriber/node_modules/sherpa-onnx-node"
+      },
+      {
+        "from": "node_modules/sherpa-onnx-win-x64",
+        "to": "transcriber/node_modules/sherpa-onnx-win-x64"
       }
+    ],
+    "asarUnpack": [
+      "node_modules/sherpa-onnx-node/**/*",
+      "node_modules/sherpa-onnx-win-x64/**/*"
     ],
     "win": {
       "icon": "build/icon.ico",
@@ -68,6 +85,7 @@
   },
   "dependencies": {
     "mammoth": "^1.13.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "sherpa-onnx-node": "^1.13.8"
   }
 }

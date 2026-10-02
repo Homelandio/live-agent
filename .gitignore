@@ -7,6 +7,8 @@ tmp/
 
 # Local speech runtime and downloaded model assets
 transcriber/runtime/
+transcriber/runtime-node/
+transcriber/node_modules/
 transcriber/__pycache__/
 transcriber/models/
 *.onnx

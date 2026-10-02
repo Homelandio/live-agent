@@ -493,9 +493,22 @@ async function refreshTranscriberStatus() {
   try {
     const status = await window.liveAgent.localTranscriberStatus();
     const node = $('transcriberStatus');
+    const select = $('transcriberModel');
+    const engine = $('transcriberEngineName');
+    if (engine) engine.textContent = status.model || '未配置转录提供者';
+    if (select && Array.isArray(status.providers) && status.providers.length) {
+      const current = String(select.value || status.provider || '');
+      select.replaceChildren();
+      for (const provider of status.providers) {
+        const suffix = provider.available ? '' : '（模型文件未安装）';
+        select.append(new Option(`${provider.name}${suffix}`, provider.id));
+      }
+      select.value = status.providers.some(provider => provider.id === current) ? current : (status.provider || status.providers[0].id);
+      select.disabled = status.providers.length < 2;
+    }
     if (!node) return status;
     if (status.available) {
-      node.textContent = '本地转录服务已就绪，不需要语音 API Key。';
+      node.textContent = `本地转录服务已就绪：${status.model || '本地模型'}，不需要语音 API Key。`;
       node.classList.add('diagnosis-good');
     } else if (status.error) {
       node.textContent = `本地转录服务异常：${status.error}`;
@@ -508,6 +521,20 @@ async function refreshTranscriberStatus() {
   } catch (error) {
     if ($('transcriberStatus')) $('transcriberStatus').textContent = '无法读取本地转录服务状态：' + error.message;
     return { available: false, error: error.message };
+  }
+}
+
+async function selectTranscriberModel(providerId) {
+  const select = $('transcriberModel');
+  if (select) select.disabled = true;
+  setState('正在切换本地语音模型...');
+  try {
+    await window.liveAgent.localTranscriberSelect(providerId);
+    await refreshTranscriberStatus();
+    setState('已切换本地语音模型');
+  } catch (error) {
+    await refreshTranscriberStatus();
+    setState('语音模型切换失败：' + error.message);
   }
 }
 
@@ -1180,12 +1207,6 @@ async function saveConfig(config = apiConfig()) {
   store('provider', config.provider);
   if (config.key) store('key', await window.liveAgent.secureStore(config.key));
   else forget('key');
-  const transcription = transcriptionConfig();
-  store('transcriberProvider', 'local-funasr');
-  forget('transcribeEndpoint');
-  forget('transcribeModel');
-  forget('transcribeLanguage');
-  forget('transcribeKey');
 }
 
 async function testConnection({ silent = false } = {}) {
@@ -1400,6 +1421,7 @@ $('systemAudioMode').onchange = event => {
 $('saveShortcuts').onclick = saveLiveShortcutSettings;
 $('resetShortcuts').onclick = resetLiveShortcutSettings;
 $('provider').onchange = event => applyProvider(event.target.value);
+$('transcriberModel').onchange = event => selectTranscriberModel(event.target.value);
 $('protect').onchange = event => window.liveAgent.protectWindow(event.target.checked);
 $('knowledge').oninput = event => knowledge = event.target.value;
 $('clear').onclick = () => { clearLiveSession(); knowledge = ''; $('knowledge').value = ''; selectedImage = null; renderWebSources([]); window.liveAgent.updateOverlay({ question: '等待问题...', answer: '等待回答...', sources: [], ...overlayLivePayload() }); setState('本次转写记录已清空'); };
@@ -1435,7 +1457,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('provider').value = stored('provider') || 'custom';
   $('endpoint').value = stored('endpoint') || $('endpoint').value;
   const savedModel = stored('model') || '';
-  store('transcriberProvider', 'local-funasr');
   try { setModelOptions(JSON.parse(stored('modelList') || '[]')); } catch { setModelOptions([]); }
   if (savedModel && [...$('model').options].some(option => option.value === savedModel)) $('model').value = savedModel;
   $('webSearchEnabled').checked = stored('webSearchEnabled') !== '0';

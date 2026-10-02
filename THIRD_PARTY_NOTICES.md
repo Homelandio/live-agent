@@ -16,6 +16,17 @@ The default model is the FunASR/ModelScope Paraformer Chinese streaming model us
 - Upstream model documentation: https://www.funasr.com/
 - FunASR model zoo: https://github.com/alibaba-damo-academy/FunASR/tree/main/model_zoo
 
+## SenseVoiceSmall INT8 model
+
+The optional local provider uses the CPU-friendly SenseVoiceSmall INT8 ONNX model and Silero VAD assets published by the sherpa-onnx model maintainers:
+
+- SenseVoice source project: https://github.com/QwenAudio/SenseVoice — MIT License.
+- SenseVoiceSmall INT8 ONNX model: https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 — Apache License 2.0 as identified by the upstream model card.
+- Silero VAD asset: https://huggingface.co/csukuangfj/vad — see the upstream model card for its license terms.
+- Native runtime: `sherpa-onnx-node` — Apache License 2.0.
+
+The model assets are ignored by Git and are included in a local build only when present under `transcriber/models/sensevoice-int8`. The application does not copy DSH application files or its private configuration. The public DeepSeek Harness speech packages were reviewed for the provider lifecycle and resource-verification design; no DeepSeek Harness source code is bundled here.
+
 ## JavaScript dependencies
 
 Electron, `pdf-parse`, `mammoth`, and their transitive dependencies retain their respective upstream licenses. The dependency packages and license files are installed by `npm install`; this project does not relicense those dependencies.

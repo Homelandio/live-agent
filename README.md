@@ -11,7 +11,7 @@ npm start
 
 ## 当前范围
 
-- 麦克风和系统声音统一通过本地 FunASR 转写；麦克风使用本地采集与语音活动分段，不依赖浏览器在线 SpeechRecognition 或语音 API Key。
+- 麦克风和系统声音统一通过可切换的本地转录提供者转写；默认是 FunASR Paraformer，也可选择 SenseVoiceSmall INT8，均使用本地采集与语音活动分段，不依赖浏览器在线 SpeechRecognition 或语音 API Key。
 - 系统声音入口使用 Windows 显示器音频捕获，支持“手动截断模式”和“实时流式模式”。前者由用户开始/结束完整录题区间后统一转写，后者按语音停顿自动分段并按顺序提交；问答 API 只负责生成回答。
 - API 使用 OpenAI-compatible Chat Completions 格式。
 - API 地址既可填写服务商基础地址（例如 `https://example.com/v1`），也可填写完整的 `/chat/completions` 地址；设置面板的“获取模型”会请求同一基础地址下的 `/models`，返回的模型可通过下拉列表切换。
@@ -40,9 +40,10 @@ npm start
 - 每轮用户消息会尝试提取用户明确陈述的稳定事实或偏好，写入长期记忆；只保存用户消息，不从助手回答反推。
 - `setContentProtection(true)` 启用 Electron/Windows 内容保护，尽量排除 OBS 显示器或窗口采集；它不是绝对 DRM，必须实际测试采集方式。
 - 系统回环音频采集需要在 Windows 共享选择器中选择带声音的窗口或显示器，仍需结合具体音频设备和 OBS 场景验证。
-- DeepSeek 等兼容接口只负责文字问答；语音通过可替换的转录提供者协议接入，默认实现是 `FunASR Paraformer 中文流式（本地）`。
-- FunASR 的服务脚本和提供者清单位于 `resources/transcriber`；源码仓库不提交 Python 运行时和模型权重，发布构建会打包构建机已有的资源，用户也可以按上游许可下载替代模型，或使用外接 HTTP 提供者，不需要修改渲染层。
-- FunASR 进程只在软件运行期间存在；正常退出会清理整个转录进程树。模型文件保留在磁盘，不会在退出后继续占用内存；强制终止或断电等异常场景可能需要人工检查残留进程。
+- DeepSeek 等兼容接口只负责文字问答；语音通过可替换的转录提供者协议接入，默认实现是 `FunASR Paraformer 中文流式（本地）`，可选 `SenseVoiceSmall INT8（本地 CPU）`。
+- FunASR 和 SenseVoice 的服务脚本、提供者清单位于 `resources/transcriber`；SenseVoice 使用 `sherpa-onnx-node` 独立 Node worker，不调用 DeepSeek 进行语音识别。模型资源遵循上游许可证，可替换为外接 HTTP 提供者而不修改渲染层。
+- 语音设置可在主界面的“语音识别服务”中二选一；一次只加载一个本地模型。模型切换会先停止旧转录进程，加载新模型并等待健康检查，不会删除知识库、记忆或 API 设置。
+- 转录进程只在应用运行期间存在；正常退出会清理整个转录进程树。模型文件保留在磁盘，不会在退出后继续占用内存；强制终止或断电等异常场景可能需要人工检查残留进程。
 - Agent 工作流支持本地 `SKILL.md`：内置事实约束、知识库检索、直播问答、工作区安全、岗位匹配分析和模拟面试教练六类技能，并按当前任务自动选择；主界面“打开用户技能目录”可打开应用数据目录下的 `skills/` 文件夹。
 - 普通对话提供普通对话、岗位匹配、模拟面试和面试复盘四种任务模式；模式会保存在历史对话中，不会改变事实边界，也不会自动虚构或写入个人经历。
 - Windows 主窗口关闭后保留在系统托盘；托盘菜单提供显示主界面、打开提词面板和“退出软件并结束全部进程”。完整退出只清理 Electron/FunASR 运行进程，不删除 `userData` 中的知识库、记忆、配置或工作区。
@@ -54,7 +55,7 @@ npm start
 2. 在当前轻量混合检索之上增加可选的本地 embedding 向量索引和跨文件实体图，不让向量服务成为基础功能的硬依赖。
 3. 增加经用户确认的本地文件写入、修改和命令工具，并继续维持工作区边界检查。
 4. 增加 OBS 显示器采集、窗口采集的实际测试页面。
-5. 准备好 `transcriber/runtime` 和 `transcriber/models` 后运行 `npm run dist` 生成 NSIS 安装包；没有这些可选资源时仍可使用外接转录提供者。
+5. 准备好 `transcriber/runtime` 和 `transcriber/models` 后运行 `npm run dist` 生成 NSIS 安装包；其中 SenseVoice INT8 需要 `model.int8.onnx`、`tokens.txt` 和 `silero_vad.onnx`，缺少时该选项会提示未安装，Paraformer 或外接转录提供者仍可使用。
 
 ## 连接说明
 
@@ -67,12 +68,12 @@ npm start
 ## 本地中文转写
 
 - 进入“直播模式”会先启动本地转写并请求系统声音权限，确认共享音频后才隐藏主窗口并打开悬浮提词面板。
-- 本地模型随软件目录分发，首次启动需要等待模型加载；服务只监听 `127.0.0.1`，不会对局域网开放。
+- 本地模型随软件目录分发，首次启动需要等待模型加载；SenseVoice INT8 约需要 239 MB 模型文件加词表和 VAD，服务只监听 `127.0.0.1`，不会对局域网开放。
 - 系统声音采集仍需在 Windows 共享选择器中选择窗口/屏幕并勾选共享音频；手动模式由用户划定完整录题区间，实时模式在约 1.6 秒连续静音后提交一段，最长语句和十分钟总时长都有限制。
 
 ## 转录提供者替换
 
-默认协议见 `transcriber/README.md` 和 `transcriber/provider.json`。本地或外接实现只需提供 `GET /health` 和 `POST /transcribe`：后者接收 16 kHz PCM WAV 并返回 `{"text":"..."}`，也可附带 `rawText`、`punctuatedText` 和 `punctuationApplied`。用户可在应用 `userData/transcriber-provider.json` 放置覆盖配置；外接接口的密钥只通过该配置声明的环境变量注入，不要把密钥写入 JSON、源码或 Git。
+默认协议见 `transcriber/README.md`、`transcriber/provider.json` 和 `transcriber/providers.json`。本地或外接实现只需提供 `GET /health` 和 `POST /transcribe`：后者接收 16 kHz PCM WAV 并返回 `{"text":"..."}`，也可附带 `rawText`、`punctuatedText` 和 `punctuationApplied`。用户可在应用 `userData/transcriber-provider.json` 放置外接提供者覆盖配置；外接接口的密钥只通过该配置声明的环境变量注入，不要把密钥写入 JSON、源码或 Git。
 
 ## 公开发布与隐私
 

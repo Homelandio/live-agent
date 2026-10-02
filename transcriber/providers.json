@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "defaultProviderId": "funasr-paraformer-zh-streaming",
+  "providers": [
+    {
+      "schemaVersion": 1,
+      "id": "funasr-paraformer-zh-streaming",
+      "name": "FunASR Paraformer 中文流式",
+      "type": "local-sidecar",
+      "runtime": "python",
+      "license": "Apache-2.0",
+      "repository": "https://github.com/alibaba-damo-academy/FunASR",
+      "healthPath": "/health",
+      "transcribePath": "/transcribe",
+      "command": "runtime/python.exe",
+      "args": ["server.py", "--model-dir", "models/paraformer-zh-streaming", "--punc-model", "models/ct-punc", "--hotword-file", "models/hotwords.txt", "--port", "0"]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "sensevoice-small-int8",
+      "name": "SenseVoiceSmall INT8（本地 CPU）",
+      "type": "local-sidecar",
+      "runtime": "node",
+      "entry": "sensevoice-server.js",
+      "license": "Apache-2.0（模型） / Apache-2.0（sherpa-onnx）",
+      "repository": "https://github.com/QwenAudio/SenseVoice",
+      "healthPath": "/health",
+      "transcribePath": "/transcribe",
+      "command": "runtime-node/node.exe",
+      "assets": ["models/sensevoice-int8/model.int8.onnx", "models/sensevoice-int8/tokens.txt", "models/sensevoice-int8/silero_vad.onnx"],
+      "args": ["--model", "models/sensevoice-int8/model.int8.onnx", "--tokens", "models/sensevoice-int8/tokens.txt", "--vad", "models/sensevoice-int8/silero_vad.onnx", "--port", "0"]
+    }
+  ]
+}

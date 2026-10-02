@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('liveAgent', {
   setLiveMode: enabled => ipcRenderer.invoke('set-live-mode', enabled),
   envOpenAiAvailable: () => ipcRenderer.invoke('env-openai-available'),
   localTranscriberStatus: () => ipcRenderer.invoke('local-transcriber-status'),
+  localTranscriberSelect: providerId => ipcRenderer.invoke('local-transcriber-select', providerId),
   localTranscribe: payload => ipcRenderer.invoke('local-transcribe', payload),
   displaySources: () => ipcRenderer.invoke('display-sources'),
   setDisplaySource: sourceId => ipcRenderer.invoke('set-display-source', sourceId),

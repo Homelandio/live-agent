@@ -34,7 +34,8 @@
         <p class="hint">点击对应按键框后直接按下组合键。为降低误触发风险，每个组合至少需要两个修饰键；快捷键只在直播模式启用。</p>
       </div>
       <h2>语音识别服务</h2>
-      <div class="local-engine"><div><span class="engine-label">本地引擎</span><strong>FunASR Paraformer</strong></div><span class="engine-badge">中文 · 本机</span></div>
+      <div class="local-engine"><div><span class="engine-label">本地引擎</span><strong id="transcriberEngineName">正在读取模型...</strong></div><span class="engine-badge">本机 · CPU</span></div>
+      <label>识别模型<select id="transcriberModel"><option value="">正在读取可用模型...</option></select></label>
       <p id="transcriberStatus" class="hint">正在检查软件目录内的本地转录服务...</p>
       <h2>Agent 工作流</h2>
       <div class="skill-panel"><div id="skillStatus" class="hint">正在加载技能...</div><div id="skillList" class="skill-list"></div><button id="openSkills" type="button" class="secondary">打开用户技能目录</button></div>
