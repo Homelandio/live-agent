@@ -39,6 +39,7 @@ function applySystemAudioMode(value, notify = false) {
     option.classList.toggle('is-selected', selected);
     option.setAttribute('aria-pressed', String(selected));
   });
+  updateToggle($('systemAudioModeToggle'), mode === 'stream', mode === 'stream' ? '模式：自动流式' : '模式：手动截断');
   localStorage.systemAudioMode = mode;
   if (notify) window.liveAgent.sendOverlayCommand({ type: 'set-system-audio-mode', mode });
 }
@@ -216,6 +217,7 @@ $('deleteScreenshot').onclick = () => clearScreenshotDraft();
 $('sendScreenshot').onclick = submitOverlayQuestion;
 $('systemAudio').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-system-audio' });
 $('microphone').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-microphone' });
+$('systemAudioModeToggle').onclick = () => window.liveAgent.sendOverlayCommand({ type: 'toggle-system-audio-mode' });
 window.liveAgent.onOverlayCommand(command => {
   if (command?.type === 'toggle-overlay-collapse') toggleCollapsed();
   if (command?.type === 'send-screenshot') submitOverlayQuestion();

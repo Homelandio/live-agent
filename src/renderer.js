@@ -1475,6 +1475,9 @@ window.liveAgent.onOverlayCommand(async command => {
     if (audioStream?.active) stopSystemAudio();
     else await startSystemAudio();
   }
+  if (command.type === 'toggle-system-audio-mode') {
+    setSystemAudioMode(systemAudioMode === 'stream' ? 'manual' : 'stream');
+  }
   if (command.type === 'capture-screenshot') {
     const data = await captureScreenForQuestion();
     if (data) window.liveAgent.updateOverlay({ ...overlayLivePayload(), screenshotDraft: data, status: '截图已准备，可用发送快捷键提交或用删除快捷键清除' });

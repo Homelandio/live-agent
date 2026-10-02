@@ -87,6 +87,7 @@ main { height: calc(100vh - 45px); overflow: hidden; padding: 12px; display: fle
 footer { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 0; }
 footer button { margin-left: 0; }
 footer #microphone, footer #systemAudio { min-width: 88px; }
+footer #systemAudioModeToggle { min-width: 96px; }
 .settings-panel { padding: 9px 14px; background: rgba(25, 33, 39, var(--overlay-bg-alpha)); border-bottom: 1px solid var(--line); }
 .settings-panel label { display: block; margin: 4px 0 8px; color: var(--muted); font-size: 10px; }
 .settings-panel output { float: right; color: var(--muted); }

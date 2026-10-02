@@ -44,6 +44,7 @@ const SHORTCUT_OVERLAY_MARGIN = 18;
 const SHORTCUT_OVERLAY_SIZE = { width: 370, height: 240 };
 const DEFAULT_LIVE_SHORTCUTS = [
   { id: 'system-audio', label: '系统声音开始 / 截断', accelerator: 'Control+Alt+Shift+R', command: { type: 'toggle-system-audio' } },
+  { id: 'system-audio-mode', label: '自动流式 / 手动截断模式', accelerator: 'Control+Alt+Shift+M', command: { type: 'toggle-system-audio-mode' } },
   { id: 'overlay-collapse', label: '悬浮窗收起 / 展开', accelerator: 'Control+Alt+Shift+H', command: { type: 'toggle-overlay-collapse' } },
   { id: 'overlay-position', label: '循环切换悬浮窗位置', accelerator: 'Control+Alt+Shift+P', command: { type: 'cycle-overlay-position' } },
   { id: 'capture-screenshot', label: '截图', accelerator: 'Control+Alt+Shift+S', command: { type: 'capture-screenshot' } },
@@ -164,7 +165,7 @@ function createTray() {
   tray.setToolTip('直播智答 · 本地个人 Agent');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '显示主界面', click: () => showMainWindow() },
-    { label: '打开提词面板', click: () => { createOverlay(); enforceContentProtection(overlay, true); focusWindow(overlay); } },
+    { label: '打开提词面板', click: () => { createOverlay(); enforceOverlayWindow(overlay); focusWindow(overlay); } },
     { type: 'separator' },
     { label: '退出软件并结束全部进程', click: () => requestQuit() }
   ]));
@@ -198,8 +199,8 @@ async function capturePrimaryScreenImage() {
   if (restoreOverlay) overlay.hide();
   if (restoreShortcutOverlay) shortcutOverlay.hide();
   await new Promise(resolve => setTimeout(resolve, 60));
-  enforceContentProtection(overlay, true);
-  enforceContentProtection(shortcutOverlay, true);
+  enforceOverlayWindow(overlay);
+  enforceOverlayWindow(shortcutOverlay);
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize, fetchWindowIcons: false });
     const source = sources.find(item => String(item.display_id || '') === String(display.id)) || sources[0];
@@ -207,11 +208,11 @@ async function capturePrimaryScreenImage() {
     return source.thumbnail.toDataURL();
   } finally {
     if (restoreOverlay && overlay && !overlay.isDestroyed()) {
-      enforceContentProtection(overlay, true);
+      enforceOverlayWindow(overlay);
       overlay.showInactive();
     }
     if (restoreShortcutOverlay && shortcutOverlay && !shortcutOverlay.isDestroyed()) {
-      enforceContentProtection(shortcutOverlay, true);
+      enforceOverlayWindow(shortcutOverlay);
       shortcutOverlay.showInactive();
     }
   }
@@ -289,11 +290,11 @@ function setLiveMode(enabled) {
   if (liveMode) {
     createShortcutOverlay();
     if (shortcutOverlay && !shortcutOverlay.isDestroyed()) {
-      enforceContentProtection(shortcutOverlay, true);
+      enforceOverlayWindow(shortcutOverlay);
       shortcutOverlay.showInactive();
     }
   } else if (shortcutOverlay && !shortcutOverlay.isDestroyed()) shortcutOverlay.hide();
-  enforceContentProtection(overlay, true);
+  enforceOverlayWindow(overlay);
   if (liveMode) enforceContentProtection(win, true);
   if (win && !win.isDestroyed()) {
     win.setSkipTaskbar(liveMode);
@@ -301,7 +302,7 @@ function setLiveMode(enabled) {
   }
   if (overlay && !overlay.isDestroyed()) {
     overlay.setSkipTaskbar(true);
-    enforceContentProtection(overlay, true);
+    enforceOverlayWindow(overlay);
     if (liveMode) { overlay.show(); overlay.focus(); }
   }
   return liveMode;
@@ -315,6 +316,24 @@ function enforceContentProtection(target, enabled = true) {
   } catch {
     return false;
   }
+}
+
+function enforceTopmost(target) {
+  if (!target || target.isDestroyed()) return false;
+  try {
+    target.setAlwaysOnTop(true, 'screen-saver');
+    target.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    target.setSkipTaskbar(true);
+    return true;
+  } catch {
+    try { target.setAlwaysOnTop(true, 'screen-saver'); return true; } catch { return false; }
+  }
+}
+
+function enforceOverlayWindow(target) {
+  enforceTopmost(target);
+  enforceContentProtection(target, true);
+  return Boolean(target && !target.isDestroyed());
 }
 
 function shortcutOverlayDisplay() {
@@ -333,7 +352,7 @@ function positionShortcutOverlay() {
     width,
     height
   }, false);
-  enforceContentProtection(shortcutOverlay, true);
+  enforceOverlayWindow(shortcutOverlay);
 }
 
 function sendShortcutOverlayDisplaySettings() {
@@ -351,7 +370,7 @@ function setOverlayPosition(position = 'top') {
   const allowed = new Set(['top', 'right', 'bottom', 'left']);
   overlayPosition = allowed.has(String(position)) ? String(position) : 'top';
   if (!overlay || overlay.isDestroyed()) return overlayPosition;
-  enforceContentProtection(overlay, true);
+  enforceOverlayWindow(overlay);
   const display = overlayDisplay();
   const work = display.workArea;
   const bounds = overlay.getBounds();
@@ -374,6 +393,7 @@ function notifyLiveEnded() { if (win && !win.isDestroyed() && win.webContents &&
 function focusWindow(target) {
   if (!target || target.isDestroyed()) return false;
   try {
+    if (target === overlay || target === shortcutOverlay) enforceOverlayWindow(target);
     if (target === win && !liveMode) target.setSkipTaskbar(false);
     if (target.isMinimized()) target.restore(); target.show(); target.focus(); return true;
   } catch { return false; }
@@ -607,13 +627,14 @@ function createOverlay() {
     backgroundColor: '#00000000', hasShadow: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
-  enforceContentProtection(overlay, true);
+  enforceOverlayWindow(overlay);
   setOverlayPosition(overlayPosition);
   overlay.loadFile(path.join(__dirname, 'overlay.html'));
-  overlay.on('ready-to-show', () => { enforceContentProtection(overlay, true); setOverlayPosition(overlayPosition); });
-  overlay.webContents.on('did-finish-load', () => enforceContentProtection(overlay, true));
-  overlay.on('show', () => enforceContentProtection(overlay, true));
-  overlay.on('resize', () => { enforceContentProtection(overlay, true); setOverlayPosition(overlayPosition); });
+  overlay.on('ready-to-show', () => { enforceOverlayWindow(overlay); setOverlayPosition(overlayPosition); });
+  overlay.webContents.on('did-finish-load', () => enforceOverlayWindow(overlay));
+  overlay.on('show', () => enforceOverlayWindow(overlay));
+  overlay.on('blur', () => { if (overlay.isVisible()) enforceOverlayWindow(overlay); });
+  overlay.on('resize', () => { enforceOverlayWindow(overlay); setOverlayPosition(overlayPosition); });
   overlay.on('closed', () => { overlay = null; if (liveMode) { setLiveMode(false); notifyLiveEnded(); } });
   return overlay;
 }
@@ -638,26 +659,26 @@ function createShortcutOverlay() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
   shortcutOverlay.setIgnoreMouseEvents(true, { forward: true });
-  shortcutOverlay.setAlwaysOnTop(true, 'floating');
-  enforceContentProtection(shortcutOverlay, true);
+  shortcutOverlay.setAlwaysOnTop(true, 'screen-saver');
+  enforceOverlayWindow(shortcutOverlay);
   shortcutOverlay.loadFile(path.join(__dirname, 'shortcut-overlay.html'));
   const onDisplayChanged = () => { if (liveMode) positionShortcutOverlay(); };
   screen.on('display-metrics-changed', onDisplayChanged);
   screen.on('display-added', onDisplayChanged);
   screen.on('display-removed', onDisplayChanged);
   shortcutOverlay.on('ready-to-show', () => {
-    enforceContentProtection(shortcutOverlay, true);
+    enforceOverlayWindow(shortcutOverlay);
     positionShortcutOverlay();
     sendShortcutOverlayDisplaySettings();
     notifyLiveShortcutStatus();
     if (liveMode) shortcutOverlay.showInactive();
   });
   shortcutOverlay.webContents.on('did-finish-load', () => {
-    enforceContentProtection(shortcutOverlay, true);
+    enforceOverlayWindow(shortcutOverlay);
     sendShortcutOverlayDisplaySettings();
     notifyLiveShortcutStatus();
   });
-  shortcutOverlay.on('show', () => enforceContentProtection(shortcutOverlay, true));
+  shortcutOverlay.on('show', () => enforceOverlayWindow(shortcutOverlay));
   shortcutOverlay.on('closed', () => {
     screen.removeListener('display-metrics-changed', onDisplayChanged);
     screen.removeListener('display-added', onDisplayChanged);
@@ -670,7 +691,7 @@ function createShortcutOverlay() {
 ipcMain.handle('protect-window', (_event, enabled) => {
   enforceContentProtection(win, enabled);
   // The floating prompt is always protected; the main-window checkbox must not disable it.
-  enforceContentProtection(overlay, true);
+  enforceOverlayWindow(overlay);
   return Boolean(enabled);
 });
 function requestQuit() {
@@ -763,8 +784,8 @@ ipcMain.handle('read-image-data', async (_event, filePath) => {
   const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
   return `data:${mime};base64,${fs.readFileSync(filePath).toString('base64')}`;
 });
-ipcMain.handle('open-overlay', () => { createOverlay(); enforceContentProtection(overlay, true); focusWindow(overlay); return true; });
-ipcMain.handle('set-overlay-position', (_event, position) => { enforceContentProtection(overlay, true); return setOverlayPosition(position); });
+ipcMain.handle('open-overlay', () => { createOverlay(); enforceOverlayWindow(overlay); focusWindow(overlay); return true; });
+ipcMain.handle('set-overlay-position', (_event, position) => { enforceOverlayWindow(overlay); return setOverlayPosition(position); });
 ipcMain.handle('close-overlay', () => { if (liveMode) { setLiveMode(false); notifyLiveEnded(); } if (overlay && !overlay.isDestroyed()) overlay.hide(); return true; });
 ipcMain.handle('set-overlay-collapsed', (_event, collapsed) => {
   if (!overlay || overlay.isDestroyed()) return false;
@@ -772,7 +793,7 @@ ipcMain.handle('set-overlay-collapsed', (_event, collapsed) => {
   const size = compact ? OVERLAY_COLLAPSED_SIZE : OVERLAY_EXPANDED_SIZE;
   overlay.setMinimumSize(compact ? [220, 45] : [360, 240]);
   overlay.setSize(size.width, size.height, false);
-  enforceContentProtection(overlay, true);
+  enforceOverlayWindow(overlay);
   setOverlayPosition(overlayPosition);
   return true;
 });
