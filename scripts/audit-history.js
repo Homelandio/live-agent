@@ -13,6 +13,17 @@ function commits() {
   return execFileSync('git', ['rev-list', '--all'], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
 }
 
+function identityFindings() {
+  const rows = execFileSync('git', ['log', '--all', '--format=%H%x00%ae%x00%ce'], { encoding: 'utf8' })
+    .split(/\r?\n/)
+    .filter(Boolean);
+  return rows.flatMap(row => {
+    const [revision, authorEmail, committerEmail] = row.split('\0');
+    const unsafe = email => email && !/(?:@live-agent\.invalid|@users\.noreply\.github\.com)$/i.test(email);
+    return unsafe(authorEmail) || unsafe(committerEmail) ? [`commit identity: ${revision.slice(0, 12)}`] : [];
+  });
+}
+
 let revisions;
 try {
   revisions = commits();
@@ -22,6 +33,12 @@ try {
 }
 
 const findings = [];
+try {
+  findings.push(...identityFindings());
+} catch (error) {
+  console.error(`History identity audit could not inspect commits: ${error.message}`);
+  process.exitCode = 1;
+}
 let inspectionFailed = false;
 outer:
 for (const revision of revisions) {
