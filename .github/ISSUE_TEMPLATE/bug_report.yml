@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a reproducible problem without sharing private data
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API keys, tokens, cookies, resumes, knowledge-base files, screenshots with private content, or raw request headers. Redact personal paths before posting.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The release version or short Git commit.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node.js version, and the non-sensitive output of `npm run doctor`.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: A minimal sequence that does not require personal files or credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted error
+      description: Paste only redacted error text. Replace keys, URLs with credentials, and absolute paths with placeholders.

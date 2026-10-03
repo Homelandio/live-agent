@@ -5,7 +5,8 @@ const RULES = [
   { name: 'bearer token literal', pattern: '(^|[^[:alpha:]])Bearer[[:space:]]+[A-Za-z0-9._-]{24,}([^[:alnum:]_-]|$)' },
   { name: 'private key block', pattern: '-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----' },
   { name: 'credential in URL', pattern: 'https?://[^[:space:]/"<>:]+:[^[:space:]/"<>@]+@' },
-  { name: 'absolute user path', pattern: '[A-Za-z]:[\\\\/]Users[\\\\/]+[^[:space:]"`<>]+' }
+  { name: 'absolute user path', pattern: '[A-Za-z]:[\\\\/]Users[\\\\/]+[^[:space:]"`<>]+' },
+  { name: 'absolute Unix user path', pattern: '(^|/)(Users|home)/[^[:space:]"`<>]+' }
 ];
 
 function commits() {
