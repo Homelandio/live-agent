@@ -29,7 +29,14 @@ The model assets are ignored by Git and are included in a local build only when 
 
 ## JavaScript dependencies
 
-Electron, `pdf-parse`, `mammoth`, and their transitive dependencies retain their respective upstream licenses. The dependency packages and license files are installed by `npm install`; this project does not relicense those dependencies.
+The direct runtime dependencies retain their respective upstream licenses:
+
+- Electron 32.x — MIT — https://github.com/electron/electron
+- `mammoth` — BSD-2-Clause — https://github.com/mwilliamson/mammoth.js
+- `pdf-parse` — Apache-2.0 — https://github.com/mehmet-kozan/pdf-parse
+- `sherpa-onnx-node` and its Windows native package — Apache-2.0 — https://github.com/k2-fsa/sherpa-onnx
+
+The dependency packages and license files are installed by `npm ci`; this project does not relicense those dependencies. Transitive dependencies remain governed by their own notices.
 
 ## Architecture inspirations
 

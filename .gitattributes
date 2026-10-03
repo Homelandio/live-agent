@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.ico binary
+*.onnx binary
+*.bin binary
+*.pt binary
+*.pth binary
+*.safetensors binary

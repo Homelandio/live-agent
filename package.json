@@ -2,18 +2,29 @@
   "name": "live-agent",
   "version": "0.1.0",
   "description": "Local-first live streaming assistant with protected prompt window",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Homelandio/live-agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Homelandio/live-agent/issues"
+  },
+  "homepage": "https://github.com/Homelandio/live-agent#readme",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
     "dist": "electron-builder --win nsis",
-    "test": "npm run test:transcriber && npm run test:audio && npm run test:vault && npm run test:workspace && npm run test:retrieval && npm run audit:public",
+    "test": "npm run test:transcriber && npm run test:audio && npm run test:vault && npm run test:workspace && npm run test:retrieval && npm run audit:public && npm run audit:history",
     "test:audio": "node scripts/test-audio-segmentation.js",
     "test:vault": "node scripts/test-vault-persistence.js",
     "test:transcriber": "node scripts/test-transcriber-provider.js",
     "test:workspace": "node scripts/test-workspace-tools.js",
     "test:retrieval": "node scripts/test-retrieval.js",
+    "doctor": "node scripts/doctor.js",
     "audit:public": "node scripts/audit-public.js",
+    "audit:history": "node scripts/audit-history.js",
     "create:icon": "node scripts/create-icon.js"
   },
   "devDependencies": {

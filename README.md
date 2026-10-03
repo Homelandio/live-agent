@@ -1,13 +1,20 @@
-# 直播智答 MVP
+# 直播智答
 
 一个本地优先的 Electron 直播辅助 Agent：Codex 风格对话、文件知识库、语音转写、第三方 OpenAI-compatible API 和 Windows 内容保护提词窗口。
+
+这是一个可自托管、可替换模型的实验性开源项目。仓库只包含源码、适配器和文档，不包含用户资料、API Key、聊天记录、知识库、模型权重或本机运行时。
+
+安装入口： [docs/INSTALL.md](docs/INSTALL.md) · Agent 配置入口： [AGENTS.md](AGENTS.md) / [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md) · 隐私说明： [docs/PRIVACY.md](docs/PRIVACY.md) · 安全报告： [SECURITY.md](SECURITY.md)
 
 ## 运行
 
 ```powershell
-npm install
+npm ci
+npm run doctor
 npm start
 ```
+
+从公开仓库安装时推荐使用 `npm ci`，并在首次启动前运行 `npm run doctor`。完整的 Windows 安装、可选语音模型和打包说明见 [docs/INSTALL.md](docs/INSTALL.md)。
 
 ## 当前范围
 
@@ -41,7 +48,7 @@ npm start
 - `setContentProtection(true)` 启用 Electron/Windows 内容保护，尽量排除 OBS 显示器或窗口采集；它不是绝对 DRM，必须实际测试采集方式。
 - 系统回环音频采集需要在 Windows 共享选择器中选择带声音的窗口或显示器，仍需结合具体音频设备和 OBS 场景验证。
 - DeepSeek 等兼容接口只负责文字问答；语音通过可替换的转录提供者协议接入，默认实现是 `FunASR Paraformer 中文流式（本地）`，可选 `SenseVoiceSmall INT8（本地 CPU）`。
-- FunASR 和 SenseVoice 的服务脚本、提供者清单位于 `resources/transcriber`；SenseVoice 使用 `sherpa-onnx-node` 独立 Node worker，不调用 DeepSeek 进行语音识别。模型资源遵循上游许可证，可替换为外接 HTTP 提供者而不修改渲染层。
+- FunASR 和 SenseVoice 的服务脚本、提供者清单位于 `transcriber`；SenseVoice 使用 `sherpa-onnx-node` 独立 Node worker，不调用 DeepSeek 进行语音识别。模型资源遵循上游许可证，可替换为外接 HTTP 提供者而不修改渲染层。
 - 语音设置可在主界面的“语音识别服务”中二选一；一次只加载一个本地模型。模型切换会先停止旧转录进程，加载新模型并等待健康检查，不会删除知识库、记忆或 API 设置。
 - 转录进程只在应用运行期间存在；正常退出会清理整个转录进程树。模型文件保留在磁盘，不会在退出后继续占用内存；强制终止或断电等异常场景可能需要人工检查残留进程。
 - Agent 工作流支持本地 `SKILL.md`：内置事实约束、知识库检索、直播问答、工作区安全、岗位匹配分析和模拟面试教练六类技能，并按当前任务自动选择；主界面“打开用户技能目录”可打开应用数据目录下的 `skills/` 文件夹。
@@ -78,8 +85,9 @@ npm start
 ## 公开发布与隐私
 
 - API Key、知识库、长期记忆、聊天记录和用户技能都位于应用数据目录，不进入仓库或安装包源码。
-- 发布前应运行语法检查、功能测试和凭据扫描；不要提交 `node_modules`、构建目录、模型权重、Python 运行时、`.env` 或本地提供者配置。
+- 发布前应运行 `npm test`，它会执行功能测试、当前文件审计和可达 Git 历史审计；不要提交 `node_modules`、构建目录、模型权重、Python/Node 运行时、`.env` 或本地提供者配置。
 - 本项目代码许可证见 `LICENSE`；FunASR 与 Paraformer 模型属于第三方组件，署名和许可证见 `THIRD_PARTY_NOTICES.md`，本项目只提供适配和调用代码。
+- 贡献流程和第三方依赖要求见 `CONTRIBUTING.md`；公开仓库的 Agent 应先阅读 `AGENTS.md`，不得要求用户把密钥或私有知识库粘贴到聊天中。
 
 ## 记忆与检索设计
 
